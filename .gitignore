@@ -1,0 +1,36 @@
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Local DB / checkpoints
+*.db
+*.sqlite
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Node / frontend
+node_modules/
+frontend/node_modules/
+dist/
+build/
+.next/
+
+# Logs
+*.log

@@ -1,0 +1,20 @@
+# 法律 AI Agent 项目开发规范
+
+## 技术栈要求
+- **后端框架**: FastAPI, Pydantic v2
+- **大模型 API**: 阿里云 DashScope (OpenAI 兼容模式)
+  - 核心推理: `qwen3-max`
+  - 文本处理/路由: `qwen-plus`
+  - Embedding: `text-embedding-v4`
+  - Reranker: `gte-rerank`
+- **工作流**: LangChain v0.1.x + LangGraph v0.1.x
+- **数据库**:
+  - 关系型: PostgreSQL (SQLAlchemy)
+  - 向量: Milvus
+  - 全文搜索: Elasticsearch 8.x
+  - 知识图谱: Neo4j
+- **异步编程**: 必须使用 `async/await` 处理所有 I/O 和网络请求。
+
+## 业务强制规则
+1. **不容忍幻觉**: 所有法规引用必须对应真实存在的法条，代码中必须包含校验逻辑。
+2. **安全与审计**: 修改知识库的操作必须记录到不可篡改的日志中。
