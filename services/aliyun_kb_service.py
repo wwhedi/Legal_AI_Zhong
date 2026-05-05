@@ -10,7 +10,25 @@ from alibabacloud_bailian20231229.client import Client as BailianClient
 from alibabacloud_tea_openapi import models as open_api_models
 from alibabacloud_tea_util import models as util_models
 
+from services.law_chunk_parse import (
+    MISSING,
+    effective_status_to_status,
+    extract_article_number,
+    parse_law_chunk_text,
+)
+
 logger = logging.getLogger(__name__)
+
+
+def _meta_pick(meta: Dict[str, Any], *keys: str) -> Optional[str]:
+    for k in keys:
+        v = meta.get(k)
+        if v is None:
+            continue
+        t = str(v).strip()
+        if t:
+            return t
+    return None
 
 
 class AliyunKBService:
@@ -24,7 +42,6 @@ class AliyunKBService:
 
     def __init__(self) -> None:
         # Official Retrieve OpenAPI uses AK/SK.
-        # Keep FARUI_* as fallback to remain compatible with existing project env files.
         self.access_key_id = (
             os.getenv("ALIBABA_CLOUD_ACCESS_KEY_ID")
         ).strip()
@@ -105,7 +122,7 @@ class AliyunKBService:
         text = (query or "").strip().replace("\n", " ")
         if len(text) <= limit:
             return text
-        return text[:limit] + "..."
+        return text[: limit] + "..."
 
     def _log_retrieve_response(self, body: Dict[str, Any], query: str) -> None:
         data = body.get("Data") if isinstance(body.get("Data"), dict) else {}
@@ -128,22 +145,73 @@ class AliyunKBService:
 
     def _node_to_citation(self, node: Dict[str, Any], ref_id: str) -> Dict[str, Any]:
         meta = node.get("Metadata") if isinstance(node.get("Metadata"), dict) else {}
-        title = str(meta.get("title") or meta.get("hier_title") or meta.get("doc_name") or "知识库文档").strip()
+        node_text = str(node.get("Text") or "").strip()
+        parsed = parse_law_chunk_text(node_text)
+
+        law_name = _meta_pick(meta, "law_name", "regulation_name", "title", "hier_title", "doc_name") or parsed[
+            "law_name"
+        ]
+        law_type = _meta_pick(meta, "law_type", "type", "doc_type", "category", "法律类型") or parsed["law_type"]
+        effective_status = _meta_pick(
+            meta, "effective_status", "legal_status", "timeliness", "时效性", "status_text"
+        ) or parsed["effective_status"]
+        publish_date = _meta_pick(meta, "publish_date", "公布日期", "pub_date") or parsed["publish_date"]
+        effective_date = _meta_pick(meta, "effective_date", "生效日期", "eff_date") or parsed["effective_date"]
+        source_url_raw = _meta_pick(meta, "source_url", "url", "link", "链接", "source_link")
+        if source_url_raw:
+            source_url: Optional[str] = source_url_raw
+        else:
+            su = parsed.get("source_url")
+            source_url = su if isinstance(su, str) and su.strip() else None
+
+        chapter = _meta_pick(meta, "chapter", "section", "章节") or parsed["chapter"]
+        body_text = node_text if node_text else parsed["text"]
+        if parsed["text"] != MISSING and parsed["text"]:
+            body_text = parsed["text"]
+        elif node_text and parsed["text"] == MISSING:
+            body_text = node_text
+
+        text_out = body_text.strip() if body_text else MISSING
+        if not text_out:
+            text_out = MISSING
+
+        article_no = extract_article_number(
+            chapter if chapter != MISSING else "",
+            text_out if text_out != MISSING else "",
+        )
+
         doc_id = str(meta.get("doc_id") or meta.get("nid") or meta.get("_id") or "").strip()
+
         score = node.get("Score")
         try:
             score_f = float(score)
         except Exception:
             score_f = 0.0
+
+        status = effective_status_to_status(
+            effective_status if isinstance(effective_status, str) else str(effective_status)
+        )
+
+        eff_display = effective_status if isinstance(effective_status, str) else str(effective_status)
+        status_display = f"【阿里云知识库】时效性：{eff_display}"
+
         return {
             "ref_id": ref_id,
-            "law_name": title,
-            "article": (doc_id or "KB"),
-            "status": "valid",
-            "status_display": "【阿里云知识库】",
+            "law_name": law_name if law_name else MISSING,
+            "law_type": law_type if law_type else MISSING,
+            "effective_status": effective_status if effective_status else MISSING,
+            "publish_date": publish_date if publish_date else MISSING,
+            "effective_date": effective_date if effective_date else MISSING,
+            "chapter": chapter if chapter else MISSING,
+            "article": article_no,
+            "text": text_out,
+            "source_url": source_url if (source_url and str(source_url).strip()) else None,
             "score": max(0.0, min(score_f, 1.0)),
+            "status": status,
+            "status_display": status_display,
             "verified": True,
             "verify_source": "kb_retrieved",
+            "doc_id": doc_id or None,
         }
 
     def _format_context(self, query: str, nodes: List[Dict[str, Any]]) -> Tuple[str, List[Dict[str, Any]], List[str]]:
@@ -249,5 +317,4 @@ class AliyunKBService:
         return "ok"
 
 
-__all__ = ["AliyunKBService"]
-
+__all__ = ["AliyunKBService", "parse_law_chunk_text"]

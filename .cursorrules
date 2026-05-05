@@ -7,12 +7,8 @@
   - 文本处理/路由: `qwen-plus`
   - Embedding: `text-embedding-v4`
   - Reranker: `gte-rerank`
-- **工作流**: LangChain v0.1.x + LangGraph v0.1.x
-- **数据库**:
-  - 关系型: PostgreSQL (SQLAlchemy)
-  - 向量: Milvus
-  - 全文搜索: Elasticsearch 8.x
-  - 知识图谱: Neo4j
+- **任务持久化**: `kb_update_api` 使用标准库 `sqlite3`（`data/kb_update.db`）
+- **知识库**: 阿里云百炼 Retrieve（`AliyunKBService`）
 - **异步编程**: 必须使用 `async/await` 处理所有 I/O 和网络请求。
 
 ## 业务强制规则

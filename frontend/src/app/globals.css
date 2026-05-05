@@ -83,6 +83,38 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /* App-level light theme tokens (ChatGPT-style canvas); use in components via var(--app-*) */
+  --app-bg: #f7f8fb;
+  --app-surface: #ffffff;
+  --app-surface-soft: #f2f4f7;
+  --app-surface-muted: #f9fafb;
+
+  --app-border: #e5e7eb;
+  --app-border-strong: #d0d5dd;
+
+  --app-text: #101828;
+  --app-text-muted: #667085;
+  --app-text-subtle: #98a2b3;
+
+  --app-primary: #2563eb;
+  --app-primary-strong: #4f46e5;
+  --app-primary-soft: #eff6ff;
+  --app-primary-softer: #f5f8ff;
+
+  --app-purple: #7c3aed;
+  --app-success: #16a34a;
+  --app-success-soft: #ecfdf3;
+  --app-warning: #f59e0b;
+  --app-warning-soft: #fffaeb;
+  --app-danger: #dc2626;
+  --app-danger-soft: #fef2f2;
+
+  --app-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --app-shadow-md: 0 8px 24px rgba(16, 24, 40, 0.08);
+  --app-shadow-lg: 0 16px 40px rgba(16, 24, 40, 0.1);
+
+  --app-sidebar-width: 56px;
 }
 
 .dark {
@@ -124,7 +156,7 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply font-sans;
   }
   html {
     @apply font-sans;

@@ -16,8 +16,8 @@ export default async function JobConfigPage({
   return (
     <Suspense
       fallback={
-        <section className="mx-auto w-full max-w-4xl space-y-6 p-6 md:p-10">
-          <p className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-700">
+        <section className="mx-auto min-h-full w-full max-w-4xl space-y-6 bg-[var(--app-bg)] p-6 md:p-10">
+          <p className="rounded-2xl border border-[var(--app-border)] bg-white p-4 text-sm text-[var(--app-text-muted)] shadow-[var(--app-shadow-sm)]">
             正在加载…
           </p>
         </section>

@@ -1,17 +1,10 @@
 import type {
-  AskQARequest,
-  AskQAResponse,
   KBCreateJobRequest,
   KBCreateJobResponse,
   KBJobListResponse,
   KBJobSnapshotResponse,
   KBStartJobResponse,
   KBStopJobResponse,
-  ApproveReviewRequest,
-  ApproveReviewResponse,
-  ReviewStatusResponse,
-  SubmitReviewRequest,
-  SubmitReviewResponse,
 } from "@/types";
 
 const DEFAULT_BASE_URL = "http://localhost:8000";
@@ -50,52 +43,7 @@ async function request<T>(
     );
   }
 
-  // Most endpoints are JSON
   return (await resp.json()) as T;
-}
-
-export async function submitReview(
-  payload: SubmitReviewRequest,
-  options?: { signal?: AbortSignal },
-): Promise<SubmitReviewResponse> {
-  return request<SubmitReviewResponse>("/review/submit", {
-    method: "POST",
-    json: payload,
-    signal: options?.signal,
-  });
-}
-
-export async function pollReviewStatus(
-  threadId: string,
-  options?: { signal?: AbortSignal },
-): Promise<ReviewStatusResponse> {
-  return request<ReviewStatusResponse>(`/review/status/${threadId}`, {
-    method: "GET",
-    signal: options?.signal,
-  });
-}
-
-export async function approveReview(
-  threadId: string,
-  payload: ApproveReviewRequest,
-  options?: { signal?: AbortSignal },
-): Promise<ApproveReviewResponse> {
-  return request<ApproveReviewResponse>(`/review/approve/${threadId}`, {
-    method: "POST",
-    json: payload,
-    signal: options?.signal,
-  });
-}
-
-export async function askLegalQuestion(
-  payload: AskQARequest,
-  options?: { signal?: AbortSignal },
-): Promise<AskQAResponse> {
-  return request<AskQAResponse>("/qa/ask", {
-    method: "POST",
-    json: payload,
-    signal: options?.signal,
-  });
 }
 
 export async function createKBUpdateJob(
@@ -147,4 +95,3 @@ export async function listKBUpdateJobs(
     signal: options?.signal,
   });
 }
-

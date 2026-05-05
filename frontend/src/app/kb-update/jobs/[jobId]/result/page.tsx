@@ -6,6 +6,13 @@ import { useEffect, useMemo, useState } from "react";
 import { getKBUpdateJob } from "@/services/api";
 import type { KBJobData } from "@/types";
 import { lawTypeLabel } from "../../../_lib/config";
+import {
+  kbCard,
+  kbJobStatusBadgeClass,
+  kbPrimaryBtn,
+  kbSecondaryBtn,
+  kbSection,
+} from "../../../_lib/ui";
 
 function statusText(status?: string): string {
   if (status === "SUCCESS") return "执行成功";
@@ -14,14 +21,6 @@ function statusText(status?: string): string {
   if (status === "CANCELLED") return "已取消";
   if (status === "PENDING") return "待启动";
   return "未知状态";
-}
-
-function statusBadgeClass(status?: string): string {
-  if (status === "SUCCESS") return "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200";
-  if (status === "FAILED") return "bg-rose-100 text-rose-700 ring-1 ring-rose-200";
-  if (status === "RUNNING") return "bg-blue-100 text-blue-700 ring-1 ring-blue-200";
-  if (status === "CANCELLED") return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
-  return "bg-amber-100 text-amber-700 ring-1 ring-amber-200";
 }
 
 function formatDuration(seconds?: number | null): string {
@@ -124,51 +123,54 @@ export default function JobResultPage() {
   const outputItems = useMemo(() => (job ? buildOutputItems(job, isFailed) : []), [job, isFailed]);
   const taskTitle = useMemo(() => (job ? buildTaskName(job) : "结果详情"), [job]);
 
+  const statusClass = kbJobStatusBadgeClass(job?.status ?? "");
+
   return (
-    <section className="mx-auto w-full max-w-5xl space-y-6 p-6 md:p-10">
+    <section className={kbSection("max-w-5xl")}>
       <header>
-        <h1 className="text-2xl font-semibold text-slate-900">{taskTitle}</h1>
-        <p className="mt-1 text-sm text-slate-600">任务 ID：{jobId}</p>
+        <h1 className="text-2xl font-semibold text-[var(--app-text)]">{taskTitle}</h1>
+        <p className="mt-1 text-sm text-[var(--app-text-muted)]">任务 ID：{jobId}</p>
       </header>
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <p className="text-xs text-slate-500">执行状态</p>
+        <div className={`${kbCard} p-4`}>
+          <p className="text-xs text-[var(--app-text-muted)]">执行状态</p>
           <div className="mt-2">
             <span
-              className={`inline-flex rounded-full px-3 py-1 text-sm font-semibold ${statusBadgeClass(job?.status)}`}
+              className={`inline-flex rounded-full px-3 py-1 text-sm font-semibold ring-1 ring-black/[0.04] ${statusClass}`}
             >
               {statusText(job?.status)}
             </span>
           </div>
         </div>
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <p className="text-xs text-slate-500">页码范围</p>
-          <p className="mt-1 text-lg font-semibold text-slate-900">{pageCount}</p>
+        <div className={`${kbCard} p-4`}>
+          <p className="text-xs text-[var(--app-text-muted)]">页码范围</p>
+          <p className="mt-1 text-lg font-semibold text-[var(--app-text)]">{pageCount}</p>
         </div>
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <p className="text-xs text-slate-500">日志条数</p>
-          <p className="mt-1 text-lg font-semibold text-slate-900">{job?.logs?.length ?? 0}</p>
+        <div className={`${kbCard} p-4`}>
+          <p className="text-xs text-[var(--app-text-muted)]">日志条数</p>
+          <p className="mt-1 text-lg font-semibold text-[var(--app-text)]">{job?.logs?.length ?? 0}</p>
         </div>
       </div>
 
-      <article className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-base font-semibold text-slate-900">输出文件与目录</h2>
-        <ul className="mt-3 space-y-2 text-sm text-slate-700">
+      <article className={`${kbCard} p-6`}>
+        <h2 className="text-base font-semibold text-[var(--app-text)]">输出文件与目录</h2>
+        <ul className="mt-3 space-y-2 text-sm text-[var(--app-text-muted)]">
           {outputItems.map((item) => (
             <li key={`${item.label}-${item.path}`}>
-              {item.label}：<code>{item.path}</code>
+              <span className="text-[var(--app-text)]">{item.label}</span>：
+              <code className="break-all text-[13px] text-[var(--app-text-muted)]">{item.path}</code>
             </li>
           ))}
         </ul>
-        {job?.error ? <p className="mt-3 text-sm text-rose-700">失败原因：{job.error}</p> : null}
-        {error ? <p className="mt-3 text-sm text-rose-700">{error}</p> : null}
+        {job?.error ? <p className="mt-3 text-sm text-[var(--app-danger)]">失败原因：{job.error}</p> : null}
+        {error ? <p className="mt-3 text-sm text-[var(--app-danger)]">{error}</p> : null}
       </article>
 
-      <article className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-slate-900">步骤耗时明细</h2>
-          <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-200">
+      <article className={`${kbCard} p-6`}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-base font-semibold text-[var(--app-text)]">步骤耗时明细</h2>
+          <span className="rounded-full bg-[var(--app-primary-soft)] px-3 py-1 text-xs font-semibold text-[var(--app-primary)] ring-1 ring-[var(--app-primary-soft)]">
             总用时：{totalDurationText}
           </span>
         </div>
@@ -176,28 +178,32 @@ export default function JobResultPage() {
           {(job?.step_progress ?? []).map((step) => (
             <div
               key={step.step}
-              className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2 text-sm"
+              className="flex items-center justify-between rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)]/40 px-3 py-2 text-sm"
             >
-              <span className="text-slate-700">{step.label}</span>
-              <span className="font-medium text-slate-900">{formatDuration(step.duration_seconds)}</span>
+              <span className="text-[var(--app-text)]">{step.label}</span>
+              <span className="font-medium tabular-nums text-[var(--app-text)]">{formatDuration(step.duration_seconds)}</span>
             </div>
           ))}
         </div>
       </article>
 
       {isFailed ? (
-        <article className="rounded-xl border border-amber-200 bg-amber-50 p-6">
-          <h2 className="text-base font-semibold text-amber-900">异常处理建议</h2>
-          <ul className="mt-3 space-y-2 text-sm text-amber-900/90">
+        <article
+          className={`${kbCard} border-amber-200/90 bg-[var(--app-warning-soft)]/90 p-6`}
+        >
+          <h2 className="text-base font-semibold text-[var(--app-text)]">异常处理建议</h2>
+          <ul className="mt-3 space-y-2 text-sm text-[var(--app-text-muted)]">
             <li>若第 1 页即失败，优先检查网络环境或更换出口 IP 后重试。</li>
             <li>分页更新建议每次不超过 100 页，降低反爬限制风险。</li>
             <li>可使用“仅重试失败步骤”减少重复耗时。</li>
           </ul>
         </article>
       ) : (
-        <article className="rounded-xl border border-emerald-200 bg-emerald-50 p-6">
-          <h2 className="text-base font-semibold text-emerald-900">执行结果说明</h2>
-          <ul className="mt-3 space-y-2 text-sm text-emerald-900/90">
+        <article
+          className={`${kbCard} border-emerald-200/90 bg-[var(--app-success-soft)]/90 p-6`}
+        >
+          <h2 className="text-base font-semibold text-[var(--app-text)]">执行结果说明</h2>
+          <ul className="mt-3 space-y-2 text-sm text-[var(--app-text-muted)]">
             <li>当前任务已成功完成，无需处理异常。</li>
             <li>如需复核执行细节，可在监控页查看完整实时日志。</li>
             <li>若后续新增规则或范围变更，可直接复用当前配置重建任务。</li>
@@ -206,19 +212,13 @@ export default function JobResultPage() {
       )}
 
       <div className="flex flex-wrap justify-end gap-3">
-        <Link
-          href="/kb-update"
-          className="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700"
-        >
+        <Link href="/kb-update" className={kbSecondaryBtn}>
           返回主页
         </Link>
-        <Link
-          href={`/kb-update/jobs/${jobId}/run`}
-          className="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700"
-        >
+        <Link href={`/kb-update/jobs/${jobId}/run`} className={kbSecondaryBtn}>
           返回监控页
         </Link>
-        <Link href="/kb-update/new" className="rounded-md bg-blue-600 px-4 py-2 text-sm text-white">
+        <Link href="/kb-update/new" className={kbPrimaryBtn}>
           使用相似配置重建任务
         </Link>
       </div>

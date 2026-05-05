@@ -2,11 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bot, Database, MessageSquarePlus } from "lucide-react";
+import { Database, MessageSquarePlus } from "lucide-react";
 
 const NAV_ITEMS = [
-  { href: "/chat", label: "法律 AI 助手", icon: Bot },
-  { href: "/new-feature-chat", label: "新问答页面", icon: MessageSquarePlus },
+  { href: "/new-feature-chat", label: "知识库问答", icon: MessageSquarePlus },
   { href: "/kb-update", label: "更新知识库", icon: Database },
 ] as const;
 
@@ -14,9 +13,11 @@ export function AppSidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="flex w-14 shrink-0 flex-col border-r border-slate-800/90 bg-slate-950 text-slate-100">
-      <div className="flex h-12 items-center justify-center border-b border-slate-800">
-        <div className="text-[10px] font-bold tracking-tight text-blue-300">AI</div>
+    <aside className="flex w-[var(--app-sidebar-width)] shrink-0 flex-col border-r border-[var(--app-border)] bg-[var(--app-surface)]/95 text-[var(--app-text)] backdrop-blur-sm dark:border-sidebar-border dark:bg-sidebar dark:text-sidebar-foreground">
+      <div className="flex h-12 items-center justify-center border-b border-[var(--app-border)] dark:border-sidebar-border">
+        <div className="rounded-md bg-[var(--app-primary-soft)] px-2 py-0.5 text-[10px] font-bold tracking-tight text-[var(--app-primary)] dark:bg-sidebar-accent dark:text-sidebar-primary">
+          AI
+        </div>
       </div>
       <nav className="flex flex-1 flex-col gap-1 p-2">
         {NAV_ITEMS.map((item) => {
@@ -29,8 +30,8 @@ export function AppSidebar() {
               title={item.label}
               className={`flex items-center justify-center rounded-lg p-2.5 transition-colors ${
                 active
-                  ? "bg-blue-600/25 text-blue-100 ring-1 ring-blue-400/50"
-                  : "text-slate-400 hover:bg-slate-900 hover:text-white"
+                  ? "bg-[var(--app-primary-soft)] text-[var(--app-primary)] ring-1 ring-[var(--app-primary)]/20 dark:bg-sidebar-accent dark:text-sidebar-primary-foreground dark:ring-sidebar-ring"
+                  : "text-[var(--app-text-muted)] hover:bg-[var(--app-surface-soft)] hover:text-[var(--app-text)] dark:text-muted-foreground dark:hover:bg-sidebar-accent dark:hover:text-sidebar-accent-foreground"
               }`}
             >
               <Icon className="size-5" />

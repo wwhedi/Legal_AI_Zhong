@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DEFAULT_STEPS, STEP_OPTIONS, isLawType, isRunMode, type StepId } from "../../_lib/config";
+import { kbCard, kbCardPadding, kbPrimaryBtn, kbSecondaryBtn, kbSection } from "../../_lib/ui";
 
 const LAW_TYPES = new Set(["xf", "flfg", "xzfg", "jcfg", "sfjs", "dfxfg"]);
 const TREATY_TYPES = new Set(["tiaoyue", "shuangbian", "duobian"]);
@@ -85,7 +86,6 @@ export function StepSelectionClient(props: {
   }
 
   const nextButtonText = useMemo(() => {
-    // If only exporting/cleaning (no pagination-required steps), don't say "select pages"
     const hasIndexUpdate = selectedVisible.includes("law_index_update");
     const hasTreatyFlow = lawType ? TREATY_TYPES.has(lawType) : false;
     if (hasTreatyFlow) return "下一步：确认参数";
@@ -107,8 +107,8 @@ export function StepSelectionClient(props: {
 
   if (!valid) {
     return (
-      <section className="mx-auto w-full max-w-3xl p-6 md:p-10">
-        <p className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+      <section className={kbSection("max-w-3xl")}>
+        <p className="rounded-xl border border-[var(--app-border)] bg-[var(--app-danger-soft)] p-4 text-sm text-[var(--app-danger)]">
           任务基础配置缺失，请返回上一步重新填写。
         </p>
       </section>
@@ -116,16 +116,16 @@ export function StepSelectionClient(props: {
   }
 
   return (
-    <section className="mx-auto w-full max-w-4xl space-y-6 p-6 md:p-10">
+    <section className={kbSection("max-w-4xl")}>
       <header>
-        <h1 className="text-2xl font-semibold text-slate-900">步骤选择</h1>
-        <p className="mt-2 text-sm text-slate-600">
+        <h1 className="text-2xl font-semibold text-[var(--app-text)]">步骤选择</h1>
+        <p className="mt-2 text-sm text-[var(--app-text-muted)]">
           支持一键执行全部步骤，或按需分步执行（含全选）。
         </p>
       </header>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <label className="mb-4 flex items-center gap-2 text-sm font-medium text-slate-700">
+      <div className={`${kbCard} ${kbCardPadding}`}>
+        <label className="mb-4 flex items-center gap-2 text-sm font-medium text-[var(--app-text)]">
           <input type="checkbox" checked={allSelected} onChange={toggleAll} />
           全选步骤
         </label>
@@ -134,7 +134,7 @@ export function StepSelectionClient(props: {
           {stepsWithLabels.map((step) => (
             <label
               key={step.id}
-              className="flex items-start gap-3 rounded-lg border border-slate-200 p-3"
+              className="flex items-start gap-3 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)]/40 p-3"
             >
               <input
                 type="checkbox"
@@ -143,8 +143,8 @@ export function StepSelectionClient(props: {
                 className="mt-1"
               />
               <div>
-                <p className="text-sm font-medium text-slate-900">{step.label}</p>
-                <p className="text-xs text-slate-500">{step.desc}</p>
+                <p className="text-sm font-medium text-[var(--app-text)]">{step.label}</p>
+                <p className="text-xs text-[var(--app-text-muted)]">{step.desc}</p>
               </div>
             </label>
           ))}
@@ -152,18 +152,14 @@ export function StepSelectionClient(props: {
       </div>
 
       <div className="flex flex-wrap items-center justify-end gap-3">
-        <button
-          type="button"
-          onClick={goBack}
-          className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
-        >
+        <button type="button" onClick={goBack} className={kbSecondaryBtn}>
           返回
         </button>
         <button
           type="button"
           onClick={() => goConfig(false)}
           disabled={selectedVisible.length === 0}
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+          className={kbPrimaryBtn}
         >
           {nextButtonText}
         </button>
@@ -171,4 +167,3 @@ export function StepSelectionClient(props: {
     </section>
   );
 }
-

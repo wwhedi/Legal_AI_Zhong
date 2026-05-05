@@ -5,11 +5,10 @@ import json
 import os
 import sys
 import time
-from http import HTTPStatus
-from typing import Dict, List, Optional
+from typing import AsyncIterator, Dict, List, Optional
 
 import httpx
-from openai import OpenAI
+from openai import AsyncOpenAI, OpenAI
 
 # region agent log
 _DEBUG_LOG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "..", "debug-312446.log")
@@ -41,28 +40,6 @@ _dbg_log(
 # endregion agent log
 
 
-def _require_dashscope():
-    """
-    Lazy import dashscope so the app can start even if the package is missing.
-    """
-    try:
-        import dashscope  # type: ignore
-    except ModuleNotFoundError as exc:
-        # region agent log
-        _dbg_log(
-            hypothesis_id="H_import",
-            location="dashscope_config.py:_require_dashscope",
-            message="dashscope import failed",
-            data={"error": str(exc), "python": sys.version.split()[0], "executable": sys.executable},
-        )
-        # endregion agent log
-        raise RuntimeError(
-            "Python 运行环境缺少依赖包 dashscope，导致模型接口无法调用。"
-            "请在当前环境安装：pip install dashscope"
-        ) from exc
-    return dashscope
-
-
 class ModelRegistry:
     """
     统一管理项目中使用到的大模型标识，避免在代码中散落硬编码字符串。
@@ -71,10 +48,6 @@ class ModelRegistry:
     @classmethod
     def reasoning(cls) -> str:
         return os.getenv("REASONING_MODEL_NAME", "qwen-max")
-
-    @classmethod
-    def legal_retriever(cls) -> str:
-        return os.getenv("FARUI_MODEL_NAME", "tongyi-farui")
 
     @classmethod
     def core_reasoning(cls) -> str:
@@ -89,10 +62,6 @@ class ModelRegistry:
     def embedding(cls) -> str:
         return os.getenv("DASHSCOPE_EMBEDDING_MODEL", "text-embedding-v4")
 
-    @classmethod
-    def local_qwen(cls) -> str:
-        return os.getenv("LOCAL_QWEN_MODEL_NAME", cls.reasoning())
-
     # Rerank 目前仅接入 DashScope HTTP endpoint；保留为常量供 RerankerService 使用
     RERANKER = "gte-rerank"
 
@@ -100,7 +69,6 @@ class ModelRegistry:
     def as_dict(cls) -> Dict[str, str]:
         return {
             "reasoning": cls.reasoning(),
-            "legal_retriever": cls.legal_retriever(),
             "core_reasoning": cls.core_reasoning(),
             "text_router": cls.text_router(),
             "embedding": cls.embedding(),
@@ -108,16 +76,39 @@ class ModelRegistry:
         }
 
 
-def get_farui_temperature() -> float:
-    return float(os.getenv("FARUI_TEMPERATURE", "0.01"))
-
-
 def get_reasoning_temperature() -> float:
     return float(os.getenv("REASONING_TEMPERATURE", "0.3"))
 
 
-def get_local_qwen_temperature() -> float:
-    return float(os.getenv("LOCAL_QWEN_TEMPERATURE", str(get_reasoning_temperature())))
+def normalize_model_backend() -> str:
+    """
+    文本推理后端（显式选择，不在 DashScope 失败后自动切换）：
+    - 未设置或空：dashscope
+    - dashscope：DashScope OpenAI 兼容模式（responses.create）
+    - ollama：本地 Ollama OpenAI 兼容 API（chat.completions）
+    """
+    raw = os.getenv("MODEL_BACKEND")
+    b = (raw or "dashscope").strip().lower()
+    if not b:
+        b = "dashscope"
+    if b == "dashscope":
+        return "dashscope"
+    if b == "ollama":
+        return "ollama"
+    raise RuntimeError(
+        f"Invalid MODEL_BACKEND={raw!r} (normalized={b!r}); expected 'dashscope' or 'ollama'."
+    )
+
+
+def get_configured_chat_model() -> str:
+    """供 ReasoningService / QwenKBRagService 默认模型名与响应 `model` 字段一致。"""
+    if normalize_model_backend() == "ollama":
+        return (os.getenv("LOCAL_MODEL_NAME") or "qwen2.5:7b").strip()
+    return (
+        (os.getenv("NEW_QWEN_MODEL_NAME") or "").strip()
+        or (os.getenv("REASONING_MODEL_NAME") or "").strip()
+        or "qwen-plus"
+    )
 
 
 def _extract_openai_text(resp: object) -> str:
@@ -143,6 +134,33 @@ def _extract_openai_text(resp: object) -> str:
         pass
 
     return str(resp).strip()
+
+
+def _call_openai_chat_completion(
+    *,
+    api_key: str,
+    base_url: str,
+    messages: List[Dict[str, str]],
+    model: str,
+    temperature: float,
+    timeout_seconds: float,
+    trust_env: bool,
+) -> str:
+    """OpenAI 兼容 `POST .../chat/completions`（Ollama 等）；与 DashScope 的 responses.create 路径分离。"""
+    with httpx.Client(trust_env=trust_env, timeout=timeout_seconds) as http_client:
+        client = OpenAI(api_key=api_key, base_url=base_url, http_client=http_client)
+        resp = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+        )
+    if not resp.choices:
+        raise RuntimeError("OpenAI-compatible chat completion returned no choices.")
+    msg = resp.choices[0].message
+    content = getattr(msg, "content", None) if msg else None
+    if isinstance(content, str) and content.strip():
+        return content.strip()
+    raise RuntimeError("OpenAI-compatible chat completion returned empty content.")
 
 
 def _call_openai_compatible_completion(
@@ -173,102 +191,57 @@ async def create_chat_completion(
     temperature: float = 0.1,
 ) -> str:
     """
-    统一的 Chat Completion 调用封装（双通道）：
-    - farui-*：DashScope SDK 原生 Generation.call
-    - qwen*：OpenAI SDK + DashScope compatible-mode
-    - app:APP_ID：DashScope Application.call（调用百炼智能体应用）
-    - 返回模型输出文本（string）
-    """
+    文本生成：由 `MODEL_BACKEND` 显式选择后端（无 DashScope 失败后的自动 fallback）。
 
-    api_key = os.getenv("DASHSCOPE_API_KEY")
-    if not api_key:
-        raise RuntimeError("Environment variable `DASHSCOPE_API_KEY` is required.")
+    - **dashscope**：DashScope OpenAI 兼容模式，经 `responses.create`；需 `DASHSCOPE_API_KEY`，
+      `model` 须为非空（调用方传入的模型名）。
+    - **ollama**：本地 Ollama `.../v1/chat/completions`；使用 `OLLAMA_BASE_URL`、`OLLAMA_API_KEY`，
+      实际请求模型固定为 `LOCAL_MODEL_NAME`（忽略传入的 `model` 参数）。
+    """
 
     messages: List[Dict[str, str]] = []
     if system_prompt:
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": user_prompt})
 
-    is_farui_model = model.lower().startswith("farui")
-    model_lower = (model or "").strip().lower()
-    is_app_model = model_lower.startswith("app:") or model_lower.startswith("application:")
-    app_id = ""
-    if is_app_model:
-        app_id = (model.split(":", 1)[1] if ":" in model else "").strip()
-        if not app_id:
-            raise RuntimeError("Agent application call requires `model` like `app:APP_ID`.")
+    backend = normalize_model_backend()
 
     def _call_sync() -> str:
-        if is_app_model:
-            # Use HTTP API directly to get clearer errors/timeouts than SDK wrappers.
-            # Ref: POST https://dashscope.aliyuncs.com/api/v1/apps/{APP_ID}/completion
-            prompt = (
-                (system_prompt.strip() + "\n\n" if system_prompt and system_prompt.strip() else "")
-                + user_prompt.strip()
-            ).strip()
-            base = (os.getenv("DASHSCOPE_APP_BASE_URL") or "https://dashscope.aliyuncs.com").strip().rstrip("/")
-            url = f"{base}/api/v1/apps/{app_id}/completion"
-            timeout_s = float(os.getenv("DASHSCOPE_APP_TIMEOUT_SECONDS", "60"))
-            trust_env = os.getenv("DASHSCOPE_TRUST_ENV", "").strip().lower() in ("1", "true", "yes")
-
-            payload = {
-                "input": {"prompt": prompt},
-                "parameters": {},
-                "debug": {},
-            }
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            }
-
-            with httpx.Client(timeout=httpx.Timeout(timeout_s), trust_env=trust_env) as client:
-                resp = client.post(url, headers=headers, json=payload)
-                if resp.status_code != HTTPStatus.OK:
-                    body = (resp.text or "").strip()
-                    raise RuntimeError(
-                        "DashScope Application HTTP failed: "
-                        f"status_code={resp.status_code} body={body[:800]}"
-                    )
-                data = resp.json()
-                output = data.get("output") if isinstance(data, dict) else None
-                text = output.get("text") if isinstance(output, dict) else None
-                if isinstance(text, str) and text.strip():
-                    return text.strip()
-                raise RuntimeError(f"DashScope Application unexpected response: {str(data)[:800]}")
-
-        if is_farui_model:
-            ds = _require_dashscope()
-            ds.api_key = api_key
-            resp = ds.Generation.call(
-                model,
+        if backend == "ollama":
+            model_name = (os.getenv("LOCAL_MODEL_NAME") or "qwen2.5:7b").strip()
+            if not model_name:
+                raise RuntimeError("LOCAL_MODEL_NAME is empty under MODEL_BACKEND=ollama.")
+            api_key = (os.getenv("OLLAMA_API_KEY") or "ollama").strip()
+            base_raw = (os.getenv("OLLAMA_BASE_URL") or "http://127.0.0.1:11434/v1").strip()
+            base_url = base_raw.rstrip("/")
+            if not base_url:
+                raise RuntimeError("OLLAMA_BASE_URL is empty; set it to e.g. http://127.0.0.1:11434/v1")
+            return _call_openai_chat_completion(
+                api_key=api_key,
+                base_url=base_url,
                 messages=messages,
-                result_format="message",
+                model=model_name,
                 temperature=temperature,
+                timeout_seconds=120.0,
+                trust_env=False,
             )
-            if getattr(resp, "status_code", None) != HTTPStatus.OK:
-                raise RuntimeError(
-                    "DashScope request failed: "
-                    f"status_code={getattr(resp, 'status_code', None)} "
-                    f"code={getattr(resp, 'code', None)} "
-                    f"message={getattr(resp, 'message', None)} "
-                    f"request_id={getattr(resp, 'request_id', None)}"
-                )
 
-            output = getattr(resp, "output", None) or {}
-            choices = output.get("choices") or []
-            if choices and isinstance(choices[0], dict):
-                msg = choices[0].get("message") or {}
-                content = msg.get("content")
-                if isinstance(content, str):
-                    return content.strip()
-            return str(resp).strip()
+        api_key = (os.getenv("DASHSCOPE_API_KEY") or "").strip()
+        if not api_key:
+            raise RuntimeError("Environment variable `DASHSCOPE_API_KEY` is required when MODEL_BACKEND=dashscope.")
 
-        base_url = os.getenv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+        model_name = (model or "").strip()
+        if not model_name:
+            raise RuntimeError("Model name is required (`model` must be non-empty).")
+
+        base_url = (os.getenv("DASHSCOPE_BASE_URL") or "https://dashscope.aliyuncs.com/compatible-mode/v1").strip()
+        if not base_url:
+            raise RuntimeError("OpenAI-compatible base URL is empty; set `DASHSCOPE_BASE_URL` to a valid URL.")
         return _call_openai_compatible_completion(
             api_key=api_key,
-            base_url=base_url,
+            base_url=base_url.rstrip("/"),
             messages=messages,
-            model=model,
+            model=model_name,
             temperature=temperature,
             timeout_seconds=120.0,
             trust_env=False,
@@ -277,48 +250,104 @@ async def create_chat_completion(
     return await asyncio.to_thread(_call_sync)
 
 
-async def create_local_qwen_completion(
+def _delta_public_text_only(delta: object) -> str:
+    """
+    只取对用户可见的正文增量（delta.content）；不读取、不转发 reasoning/thinking 等内部字段。
+    """
+    if delta is None:
+        return ""
+    content = getattr(delta, "content", None)
+    if isinstance(content, str) and content:
+        return content
+    return ""
+
+
+async def create_chat_completion_stream(
     *,
+    model: str,
     system_prompt: Optional[str],
     user_prompt: str,
-    model: Optional[str] = None,
-    temperature: Optional[float] = None,
-) -> str:
-    base_url = (os.getenv("LOCAL_QWEN_BASE_URL") or "").strip().rstrip("/")
-    if not base_url:
-        raise RuntimeError("Environment variable `LOCAL_QWEN_BASE_URL` is required.")
+    temperature: float = 0.1,
+) -> AsyncIterator[str]:
+    """
+    文本流式生成（显式 chat.completions + stream=True），按后端分支：
 
-    api_key = (os.getenv("LOCAL_QWEN_API_KEY") or "EMPTY").strip()
-    model_name = (model or ModelRegistry.local_qwen()).strip()
-    if not model_name:
-        raise RuntimeError("Local Qwen model name is required.")
+    - **ollama**：经本地 Ollama OpenAI 兼容 `chat.completions`。
+    - **dashscope**：经 DashScope **OpenAI 兼容** `chat.completions` 流式接口
+      （与 `create_chat_completion` 使用的 `responses.create` 非流式路径不同；
+      若需流式 token，统一走本函数的 chat.completions）。
 
-    timeout_seconds = float(os.getenv("LOCAL_QWEN_TIMEOUT_SECONDS", "120"))
-    trust_env = os.getenv("LOCAL_QWEN_TRUST_ENV", "").strip().lower() in ("1", "true", "yes")
-
+    每次 yield 一段可见正文 delta（可能为空字符串的 chunk 会被调用方跳过）。
+    """
     messages: List[Dict[str, str]] = []
     if system_prompt:
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": user_prompt})
 
-    return await asyncio.to_thread(
-        _call_openai_compatible_completion,
-        api_key=api_key,
-        base_url=base_url,
-        messages=messages,
-        model=model_name,
-        temperature=temperature if temperature is not None else get_local_qwen_temperature(),
-        timeout_seconds=timeout_seconds,
-        trust_env=trust_env,
-    )
+    backend = normalize_model_backend()
+
+    if backend == "ollama":
+        model_name = (os.getenv("LOCAL_MODEL_NAME") or "qwen2.5:7b").strip()
+        if not model_name:
+            raise RuntimeError("LOCAL_MODEL_NAME is empty under MODEL_BACKEND=ollama.")
+        api_key = (os.getenv("OLLAMA_API_KEY") or "ollama").strip()
+        base_raw = (os.getenv("OLLAMA_BASE_URL") or "http://127.0.0.1:11434/v1").strip()
+        base_url = base_raw.rstrip("/")
+        if not base_url:
+            raise RuntimeError("OLLAMA_BASE_URL is empty; set it to e.g. http://127.0.0.1:11434/v1")
+        async with httpx.AsyncClient(trust_env=False, timeout=120.0) as http_client:
+            client = AsyncOpenAI(api_key=api_key, base_url=base_url, http_client=http_client)
+            stream = await client.chat.completions.create(
+                model=model_name,
+                messages=messages,
+                temperature=temperature,
+                stream=True,
+            )
+            async for chunk in stream:
+                if not chunk.choices:
+                    continue
+                piece = _delta_public_text_only(chunk.choices[0].delta)
+                if piece:
+                    yield piece
+        return
+
+    if backend == "dashscope":
+        api_key = (os.getenv("DASHSCOPE_API_KEY") or "").strip()
+        if not api_key:
+            raise RuntimeError("Environment variable `DASHSCOPE_API_KEY` is required when MODEL_BACKEND=dashscope.")
+
+        model_name = (model or "").strip()
+        if not model_name:
+            raise RuntimeError("Model name is required (`model` must be non-empty).")
+
+        base_url = (os.getenv("DASHSCOPE_BASE_URL") or "https://dashscope.aliyuncs.com/compatible-mode/v1").strip()
+        if not base_url:
+            raise RuntimeError("OpenAI-compatible base URL is empty; set `DASHSCOPE_BASE_URL` to a valid URL.")
+        # DashScope 兼容模式的流式输出：chat.completions（SSE）。若服务端或模型不支持，将抛错由上层转为 error 事件。
+        async with httpx.AsyncClient(trust_env=False, timeout=120.0) as http_client:
+            client = AsyncOpenAI(api_key=api_key, base_url=base_url.rstrip("/"), http_client=http_client)
+            stream = await client.chat.completions.create(
+                model=model_name,
+                messages=messages,
+                temperature=temperature,
+                stream=True,
+            )
+            async for chunk in stream:
+                if not chunk.choices:
+                    continue
+                piece = _delta_public_text_only(chunk.choices[0].delta)
+                if piece:
+                    yield piece
+        return
+
+    raise RuntimeError(f"Streaming not implemented for MODEL_BACKEND={backend!r}.")
 
 
 __all__ = [
     "ModelRegistry",
     "create_chat_completion",
-    "create_local_qwen_completion",
-    "get_farui_temperature",
-    "get_local_qwen_temperature",
+    "create_chat_completion_stream",
+    "get_configured_chat_model",
     "get_reasoning_temperature",
+    "normalize_model_backend",
 ]
-

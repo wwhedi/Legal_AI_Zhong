@@ -1,23 +1,25 @@
 from __future__ import annotations
 
+import json
+import logging
+import os
+import time
+from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from config.system_prompts import LEGAL_ASSISTANT_SYSTEM_PROMPT
 from new_feature_qwen_kb.service import QwenKBRagService
-import json
-import os
-import time
-from typing import Any as _Any
 
+logger = logging.getLogger(__name__)
 
 # region agent log
 _DEBUG_LOG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "..", "debug-312446.log")
 
 
-def _dbg_log(*, hypothesis_id: str, location: str, message: str, data: Dict[str, _Any]) -> None:
+def _dbg_log(*, hypothesis_id: str, location: str, message: str, data: Dict[str, Any]) -> None:
     try:
         payload = {
             "sessionId": "312446",
@@ -34,16 +36,12 @@ def _dbg_log(*, hypothesis_id: str, location: str, message: str, data: Dict[str,
         return
 
 
-try:
-    from services.local_qwen_prompt_service import LocalQwenPromptService
-except Exception as exc:
-    LocalQwenPromptService = None  # type: ignore
-    _dbg_log(
-        hypothesis_id="H_local_prompt",
-        location="new_feature_qwen_kb/router.py:import",
-        message="LocalQwenPromptService import failed",
-        data={"error": str(exc), "type": type(exc).__name__},
-    )
+_dbg_log(
+    hypothesis_id="H_router",
+    location="new_feature_qwen_kb/router.py:import",
+    message="new_rag router loaded",
+    data={},
+)
 # endregion agent log
 
 router = APIRouter(prefix="/new-rag", tags=["new-rag"])
@@ -59,19 +57,6 @@ class NewRagAskResponse(BaseModel):
     model: str
     retrieved_count: int
     citations: List[Dict[str, Any]] = Field(default_factory=list)
-
-
-class LocalPromptRequest(BaseModel):
-    system_prompt: str = Field(default=LEGAL_ASSISTANT_SYSTEM_PROMPT, max_length=12000)
-    user_prompt: str = Field(..., min_length=1, max_length=12000)
-    model: str | None = Field(default=None, max_length=200)
-    temperature: float | None = Field(default=None, ge=0.0, le=2.0)
-
-
-class LocalPromptResponse(BaseModel):
-    answer: str
-    model: str
-    base_url: str
 
 
 @router.post("/ask", response_model=NewRagAskResponse)
@@ -93,28 +78,37 @@ async def ask_new_rag(req: NewRagAskRequest) -> NewRagAskResponse:
     )
 
 
-@router.post("/local-prompt", response_model=LocalPromptResponse)
-async def ask_local_prompt(req: LocalPromptRequest) -> LocalPromptResponse:
-    if LocalQwenPromptService is None:
-        raise HTTPException(
-            status_code=501,
-            detail="local-prompt endpoint is unavailable: missing services.local_qwen_prompt_service",
-        )
-    svc = LocalQwenPromptService()
-    try:
-        result = await svc.ask(
-            system_prompt=req.system_prompt or LEGAL_ASSISTANT_SYSTEM_PROMPT,
-            user_prompt=req.user_prompt,
-            model=req.model,
-            temperature=req.temperature,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"local-qwen call failed: {exc}") from exc
+@router.post("/ask-stream")
+async def ask_new_rag_stream(req: NewRagAskRequest) -> StreamingResponse:
+    svc = QwenKBRagService()
 
-    return LocalPromptResponse(
-        answer=str(result.get("answer") or ""),
-        model=str(result.get("model") or ""),
-        base_url=str(result.get("base_url") or ""),
+    async def ndjson_body():
+        try:
+            async for event in svc.ask_events(req.question):
+                yield json.dumps(event, ensure_ascii=False) + "\n"
+        except ValueError as exc:
+            err = {
+                "type": "error",
+                "stage": "error",
+                "title": "输入无效",
+                "message": str(exc)[:200],
+                "data": {},
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            yield json.dumps(err, ensure_ascii=False) + "\n"
+        except Exception:
+            logger.exception("new_rag ask-stream ndjson_body failed")
+            err = {
+                "type": "error",
+                "stage": "error",
+                "title": "处理失败",
+                "message": "处理过程中出现异常，请稍后重试或查看后端日志。",
+                "data": {},
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            yield json.dumps(err, ensure_ascii=False) + "\n"
+
+    return StreamingResponse(
+        ndjson_body(),
+        media_type="application/x-ndjson; charset=utf-8",
     )

@@ -1,12 +1,17 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Bot, Send, User } from "lucide-react";
+import { Bot, Loader2, Send, User } from "lucide-react";
 import {
+  PLACEHOLDER_BASIS,
+  PLACEHOLDER_RISK,
+  PLACEHOLDER_SUGGESTION,
   QwenKbAnswerCard,
   type QwenAnswer,
-  type QwenKbSource,
 } from "@/components/chat/QwenKbAnswerCard";
+import { ProcessTimeline } from "@/components/chat/ProcessTimeline";
+import { StreamingAnswerDraft } from "@/components/chat/StreamingAnswerDraft";
+import type { QwenKbSource, RagProcessEvent } from "@/types";
 
 type Role = "user" | "assistant";
 
@@ -14,6 +19,7 @@ type ChatItem = {
   id: string;
   role: Role;
   content: string;
+  processEvents?: RagProcessEvent[];
   answerCard?: {
     answer: QwenAnswer;
     sources: QwenKbSource[];
@@ -22,18 +28,32 @@ type ChatItem = {
   };
 };
 
+type NewRagCitation = {
+  ref_id?: string;
+  law_name?: string;
+  lawName?: string;
+  law_type?: string;
+  lawType?: string;
+  effective_status?: string;
+  effectiveStatus?: string;
+  publish_date?: string;
+  publishDate?: string;
+  effective_date?: string;
+  effectiveDate?: string;
+  chapter?: string;
+  article?: string;
+  text?: string;
+  source_url?: string;
+  sourceUrl?: string;
+  score?: number;
+};
+
 type NewRagResponse = {
   question: string;
   answer: string;
   model: string;
   retrieved_count: number;
-  citations: Array<{
-    ref_id?: string;
-    law_name?: string;
-    article?: string;
-    score?: number;
-    text?: string;
-  }>;
+  citations: NewRagCitation[];
 };
 
 const DEFAULT_BASE_URL = "http://localhost:8000";
@@ -50,72 +70,409 @@ function parseRefIdToNumber(refId?: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+type SectionKind = "conclusion" | "basis" | "risk" | "suggestion";
+
+/** 列表项「- [1] …」不是小节标题 */
+function isCitationListLine(line: string): boolean {
+  return /^\s*[-*•]\s*\[\d+\]/.test(line.trimStart());
+}
+
+/** 识别 1)结论 / 2)依据 / 3)风险点 / 4)建议 等标题；不把 [n] 当结构编号 */
+function detectSectionHeaderLine(line: string): SectionKind | null {
+  const t = line.trimStart();
+  if (isCitationListLine(line)) return null;
+
+  if (
+    /^\s*(?:(?:[1１]\s*[)）、.]|[一]\s*[、,，.]|1\s*\.)\s*)结论\b/.test(t) ||
+    /^\s*结论(?![性书及编])(?:\s*[：:]|\s+$|\s+)/.test(t) ||
+    /^\s*结论\s*$/.test(t)
+  ) {
+    return "conclusion";
+  }
+  if (
+    /^\s*(?:(?:[2２]\s*[)）、.]|[二]\s*[、,，.]|2\s*\.)\s*)依据\b/.test(t) ||
+    /^\s*依据(?:\s*[：:]|\s+$|\s+)/.test(t)
+  ) {
+    return "basis";
+  }
+  if (
+    /^\s*(?:(?:[3３]\s*[)）、.]|[三]\s*[、,，.]|3\s*\.)\s*)风险点\b/.test(t) ||
+    /^\s*风险点(?:\s*[：:]|\s+$|\s+)/.test(t) ||
+    /^\s*风险点\s*$/.test(t) ||
+    /^\s*(?:(?:[3３]\s*[)）、.]|[三]\s*[、,，.]|3\s*\.)\s*)风险\b/.test(t) ||
+    /^\s*风险(?![点])(?:\s*[：:]|\s+$|\s+)/.test(t) ||
+    /^\s*风险\s*$/.test(t)
+  ) {
+    return "risk";
+  }
+  if (
+    /^\s*(?:(?:[4４]\s*[)）、.]|[四]\s*[、,，.]|4\s*\.)\s*)建议\b/.test(t) ||
+    /^\s*(?:(?:[3３]\s*[)）、.]|[三]\s*[、,，.]|3\s*\.)\s*)建议\b/.test(t) ||
+    /^\s*建议(?:\s*[：:]|\s+$|\s+)/.test(t)
+  ) {
+    return "suggestion";
+  }
+  return null;
+}
+
+function stripSectionHeaderLine(line: string, kind: SectionKind): { rest: string; stripped: boolean } {
+  const patterns: Record<SectionKind, RegExp[]> = {
+    conclusion: [
+      /^\s*(?:(?:[1１]\s*[)）、.]|[一]\s*[、,，.]|1\s*\.)\s*)结论(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*结论(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*(?:(?:[1１]\s*[)）、.]|[一]\s*[、,，.]|1\s*\.)\s*)结论(?![性书及编])\s*(.*)$/s,
+      /^\s*(?:(?:[1１]\s*[)）、.]|[一]\s*[、,，.]|1\s*\.)\s*)结论\s*$/s,
+      /^\s*结论(?![性书及编])\s*$/s,
+      /^\s*结论\s*$/s,
+    ],
+    basis: [
+      /^\s*(?:(?:[2２]\s*[)）、.]|[二]\s*[、,，.]|2\s*\.)\s*)依据(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*依据(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*(?:(?:[2２]\s*[)）、.]|[二]\s*[、,，.]|2\s*\.)\s*)依据\s*$/s,
+      /^\s*依据\s*$/s,
+    ],
+    risk: [
+      /^\s*(?:(?:[3３]\s*[)）、.]|[三]\s*[、,，.]|3\s*\.)\s*)风险点(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*风险点(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*(?:(?:[3３]\s*[)）、.]|[三]\s*[、,，.]|3\s*\.)\s*)风险点\s*$/s,
+      /^\s*风险点\s*$/s,
+      /^\s*(?:(?:[3３]\s*[)）、.]|[三]\s*[、,，.]|3\s*\.)\s*)风险(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*风险(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*(?:(?:[3３]\s*[)）、.]|[三]\s*[、,，.]|3\s*\.)\s*)风险\s*$/s,
+      /^\s*风险\s*$/s,
+    ],
+    suggestion: [
+      /^\s*(?:(?:[4４]\s*[)）、.]|[四]\s*[、,，.]|4\s*\.)\s*)建议(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*(?:(?:[3３]\s*[)）、.]|[三]\s*[、,，.]|3\s*\.)\s*)建议(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*建议(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*(?:(?:[4４]\s*[)）、.]|[四]\s*[、,，.]|4\s*\.)\s*)建议\s*$/s,
+      /^\s*(?:(?:[3３]\s*[)）、.]|[三]\s*[、,，.]|3\s*\.)\s*)建议\s*$/s,
+      /^\s*建议\s*$/s,
+    ],
+  };
+  for (const re of patterns[kind]) {
+    const m = re.exec(line);
+    if (!m) continue;
+    const body = m[2] ?? m[1];
+    if (typeof body === "string") {
+      return { rest: body.trim(), stripped: true };
+    }
+    return { rest: "", stripped: true };
+  }
+  return { rest: line, stripped: false };
+}
+
+/** 从一段文字中拆出后续小节（用于标题挤在同一行的情况） */
+function peelFollowingSection(
+  content: string,
+  kind: "basis" | "risk" | "suggestion",
+): { head: string; tail: string } {
+  const patterns: Record<typeof kind, RegExp[]> = {
+    basis: [
+      /(?<![0-9０-９])(?:(?:[2２]\s*[)）、.]|[二]\s*[、,，.]|2\s*\.)\s*)依据\s*[：:]?\s*/,
+    ],
+    risk: [
+      /(?<![0-9０-９])(?:(?:[3３]\s*[)）、.]|[三]\s*[、,，.]|3\s*\.)\s*)风险点\s*[：:]?\s*/,
+      /(?<![0-9０-９])(?:(?:[3３]\s*[)）、.]|[三]\s*[、,，.]|3\s*\.)\s*)风险\s*[：:]?\s*/,
+    ],
+    suggestion: [
+      /(?<![0-9０-９])(?:(?:[4４]\s*[)）、.]|[四]\s*[、,，.]|4\s*\.)\s*)建议\s*[：:]?\s*/,
+      /(?<![0-9０-９])(?:(?:[3３]\s*[)）、.]|[三]\s*[、,，.]|3\s*\.)\s*)建议\s*[：:]?\s*/,
+    ],
+  };
+  for (const rx of patterns[kind]) {
+    const m = rx.exec(content);
+    if (m && m.index !== undefined) {
+      return {
+        head: content.slice(0, m.index).trimEnd(),
+        tail: content.slice(m.index + m[0].length).trim(),
+      };
+    }
+  }
+  return { head: content, tail: "" };
+}
+
+const ACTION_LINE_RE =
+  /^\s*(?:建议|应当|可以|需要|请|建议先|建议双方|建议当事人|建议贵方|建议您|建议你|建议企业)/;
+
+function heuristicAppendSuggestionFromBasisLines(basisLines: string[]): { basisLines: string[]; suggestionLines: string[] } {
+  const splitIdx = basisLines.findIndex((ln, i) => i > 0 && ACTION_LINE_RE.test(ln));
+  if (splitIdx === -1) return { basisLines, suggestionLines: [] };
+  return {
+    basisLines: basisLines.slice(0, splitIdx),
+    suggestionLines: basisLines.slice(splitIdx),
+  };
+}
+
+function fallbackFourPart(text: string): { conclusion: string; basis: string; risk: string; suggestion: string } {
+  const paras = text.split(/\n\s*\n+/).map((p) => p.trim()).filter(Boolean);
+  if (paras.length >= 4) {
+    return {
+      conclusion: paras[0] ?? "",
+      basis: paras[1] ?? "",
+      risk: paras[2] ?? "",
+      suggestion: paras.slice(3).join("\n\n"),
+    };
+  }
+  if (paras.length === 3) {
+    return { conclusion: paras[0] ?? "", basis: paras[1] ?? "", risk: "", suggestion: paras[2] ?? "" };
+  }
+  if (paras.length === 2) {
+    return { conclusion: paras[0] ?? "", basis: paras[1] ?? "", risk: "", suggestion: "" };
+  }
+  const lines = text.split(/\r?\n/);
+  const basisLike: string[] = [];
+  const riskLike: string[] = [];
+  const suggestLike: string[] = [];
+  const head: string[] = [];
+  let phase: "head" | "basis" | "risk" | "suggest" = "head";
+  for (const ln of lines) {
+    const t = ln.trim();
+    if (!t) {
+      if (phase === "head") head.push(ln);
+      else if (phase === "basis") basisLike.push(ln);
+      else if (phase === "risk") riskLike.push(ln);
+      else suggestLike.push(ln);
+      continue;
+    }
+    const listCitation = /^[-*•]\s*\[[0-9０-９]+\]/.test(t);
+    const riskHead = /^(?:风险点|风险)\s*[：:]/.test(t);
+    const action = ACTION_LINE_RE.test(t);
+    if (phase === "head" && listCitation) {
+      phase = "basis";
+    }
+    if (phase === "basis" && riskHead) {
+      phase = "risk";
+    }
+    if ((phase === "basis" || phase === "risk") && action && !/^[-*•]\s*\[[0-9０-９]+\]/.test(t) && !riskHead) {
+      phase = "suggest";
+    }
+    if (phase === "head") head.push(ln);
+    else if (phase === "basis") basisLike.push(ln);
+    else if (phase === "risk") riskLike.push(ln);
+    else suggestLike.push(ln);
+  }
+  return {
+    conclusion: head.join("\n").trim() || text.trim(),
+    basis: basisLike.join("\n").trim(),
+    risk: riskLike.join("\n").trim(),
+    suggestion: suggestLike.join("\n").trim(),
+  };
+}
+
+function mergeTail(prefix: string, existing: string): string {
+  return [prefix, existing].filter(Boolean).join("\n\n").trim();
+}
+
 function normalizeAnswer(answer: string): QwenAnswer {
   const text = (answer || "").trim();
   if (!text) {
     return {
       conclusion: "未获取到回答。",
-      details: [],
+      details: [
+        { title: "依据", content: PLACEHOLDER_BASIS },
+        { title: "风险点", content: PLACEHOLDER_RISK },
+        { title: "建议", content: PLACEHOLDER_SUGGESTION },
+      ],
     };
   }
 
-  // 尝试按常见编号段落拆分：1)结论 ... 2)依据 ... 3)建议 ...
-  const chunks = text
-    .split(/(?=\b\d+\s*[).、：])/)
-    .map((v) => v.trim())
-    .filter(Boolean);
+  let mode: SectionKind = "conclusion";
+  const buckets: Record<SectionKind, string[]> = {
+    conclusion: [],
+    basis: [],
+    risk: [],
+    suggestion: [],
+  };
 
-  if (chunks.length < 2) {
-    return {
-      conclusion: text,
-      details: [],
-    };
-  }
-
-  const stripLead = (s: string) => s.replace(/^\d+\s*[).、：]\s*/, "").trim();
-  const conclusion = stripLead(chunks[0]);
-  const details = chunks.slice(1).map((chunk, idx) => {
-    const body = stripLead(chunk);
-    const titleMatch = /^([^：:]{2,18})[：:]\s*(.+)$/s.exec(body);
-    if (titleMatch) {
-      return {
-        title: titleMatch[1].trim(),
-        content: titleMatch[2].trim(),
-      };
+  const lines = text.split(/\r?\n/);
+  for (const line of lines) {
+    const kind = detectSectionHeaderLine(line);
+    if (kind) {
+      const { rest, stripped } = stripSectionHeaderLine(line, kind);
+      if (!stripped) {
+        buckets[mode].push(line);
+        continue;
+      }
+      mode = kind;
+      if (rest) buckets[kind].push(rest);
+      continue;
     }
-    return {
-      title: `依据 ${idx + 1}`,
-      content: body,
-    };
-  });
-  return { conclusion, details };
+    buckets[mode].push(line);
+  }
+
+  let conclusion = buckets.conclusion.join("\n").trim();
+  let basis = buckets.basis.join("\n").trim();
+  let risk = buckets.risk.join("\n").trim();
+  let suggestion = buckets.suggestion.join("\n").trim();
+
+  const peelBFromC = peelFollowingSection(conclusion, "basis");
+  if (peelBFromC.tail) {
+    conclusion = peelBFromC.head.trim();
+    basis = mergeTail(peelBFromC.tail, basis);
+  }
+  const peelRFromC = peelFollowingSection(conclusion, "risk");
+  if (peelRFromC.tail) {
+    conclusion = peelRFromC.head.trim();
+    risk = mergeTail(peelRFromC.tail, risk);
+  }
+  const peelSFromC = peelFollowingSection(conclusion, "suggestion");
+  if (peelSFromC.tail) {
+    conclusion = peelSFromC.head.trim();
+    suggestion = mergeTail(peelSFromC.tail, suggestion);
+  }
+
+  const peelRFromB = peelFollowingSection(basis, "risk");
+  if (peelRFromB.tail) {
+    basis = peelRFromB.head.trim();
+    risk = mergeTail(peelRFromB.tail, risk);
+  }
+  const peelSFromB = peelFollowingSection(basis, "suggestion");
+  if (peelSFromB.tail) {
+    basis = peelSFromB.head.trim();
+    suggestion = mergeTail(peelSFromB.tail, suggestion);
+  }
+
+  const peelSFromR = peelFollowingSection(risk, "suggestion");
+  if (peelSFromR.tail) {
+    risk = peelSFromR.head.trim();
+    suggestion = mergeTail(peelSFromR.tail, suggestion);
+  }
+
+  if (!suggestion.trim()) {
+    const bl = basis.split(/\r?\n/);
+    const heur = heuristicAppendSuggestionFromBasisLines(bl);
+    basis = heur.basisLines.join("\n").trim();
+    suggestion = mergeTail(heur.suggestionLines.join("\n").trim(), suggestion);
+  }
+
+  const firstLine = text.split(/\r?\n/)[0] ?? "";
+  const looksUnstructured =
+    !detectSectionHeaderLine(firstLine) &&
+    !/\r?\n\s*(?:(?:[2２]\s*[)）、.]|[二]\s*[、,，.]|2\s*\.)\s*)?依据\b/m.test(text) &&
+    !/\r?\n\s*(?:(?:[3３]\s*[)）、.]|[三]\s*[、,，.]|3\s*\.)\s*)?风险点?\b/m.test(text) &&
+    !/\r?\n\s*(?:(?:[4４]\s*[)）、.]|[四]\s*[、,，.]|4\s*\.)\s*)?建议\b/m.test(text) &&
+    !/\r?\n\s*建议\b/m.test(text);
+
+  if (looksUnstructured && !basis && !risk && !suggestion) {
+    const fb = fallbackFourPart(text);
+    conclusion = fb.conclusion;
+    basis = fb.basis;
+    risk = fb.risk;
+    suggestion = fb.suggestion;
+  }
+
+  if (!conclusion.trim()) {
+    const firstPara = text.split(/\n\s*\n+/)[0]?.trim() || text.split(/\r?\n/)[0]?.trim() || "";
+    if (firstPara) {
+      conclusion = firstPara;
+    }
+  }
+
+  if (!basis.trim()) {
+    basis = PLACEHOLDER_BASIS;
+  }
+  if (!risk.trim()) {
+    risk = PLACEHOLDER_RISK;
+  }
+  if (!suggestion.trim()) {
+    suggestion = PLACEHOLDER_SUGGESTION;
+  }
+
+  return {
+    conclusion: conclusion.trim() || text,
+    details: [
+      { title: "依据", content: basis },
+      { title: "风险点", content: risk },
+      { title: "建议", content: suggestion },
+    ],
+  };
+}
+
+function pickStr(obj: Record<string, unknown>, ...keys: string[]): string {
+  for (const k of keys) {
+    const v = obj[k];
+    if (v == null) continue;
+    const s = String(v).trim();
+    if (s) return s;
+  }
+  return "未提供";
+}
+
+function pickUrl(obj: Record<string, unknown>): string | null {
+  const v = obj.source_url ?? obj.sourceUrl;
+  if (v == null) return null;
+  const s = String(v).trim();
+  return s ? s : null;
 }
 
 function normalizeSources(citations: NewRagResponse["citations"]): QwenKbSource[] {
   const seen = new Set<number>();
   const result: QwenKbSource[] = [];
-  for (const item of citations || []) {
-    const id = parseRefIdToNumber(item.ref_id);
+  for (const raw of citations || []) {
+    const item = raw as Record<string, unknown>;
+    const id = parseRefIdToNumber(item.ref_id as string | undefined);
     if (!id || seen.has(id)) continue;
     seen.add(id);
-    const text = (item.text || "").trim() || [item.law_name, item.article].filter(Boolean).join(" · ") || "暂无片段文本";
+    const lawName = pickStr(item, "law_name", "lawName");
+    const lawType = pickStr(item, "law_type", "lawType");
+    const effectiveStatus = pickStr(item, "effective_status", "effectiveStatus");
+    const publishDate = pickStr(item, "publish_date", "publishDate");
+    const effectiveDate = pickStr(item, "effective_date", "effectiveDate");
+    const chapter = pickStr(item, "chapter");
+    const article = pickStr(item, "article");
+    const body = pickStr(item, "text");
+    const text =
+      body !== "未提供"
+        ? body
+        : [lawName, article].filter((s) => s && s !== "未提供").join(" · ") || "未提供";
+    const refRaw = item.ref_id != null ? String(item.ref_id).trim() : "";
+    const refId = refRaw || `[${id}]`;
     result.push({
       id,
+      refId,
+      lawName,
+      lawType,
+      effectiveStatus,
+      publishDate,
+      effectiveDate,
+      chapter,
+      article,
       text,
+      sourceUrl: pickUrl(item),
       score: typeof item.score === "number" ? item.score : undefined,
     });
   }
-  return result.sort((a, b) => a.id - b.id).slice(0, 5);
+  return result.sort((a, b) => a.id - b.id);
 }
 
 export default function NewFeatureChatPage() {
   const [messages, setMessages] = useState<ChatItem[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [streamingEvents, setStreamingEvents] = useState<RagProcessEvent[]>([]);
   const [lastMeta, setLastMeta] = useState<{ model: string; retrievedCount: number } | null>(null);
   const [lastQuestion, setLastQuestion] = useState("");
 
   const emptyHint = useMemo(() => "示例：竞业限制协议最多约定几年？", []);
+
+  const streamingAnswerDraft = useMemo(() => {
+    let acc = "";
+    for (const e of streamingEvents) {
+      if (e.type === "answer_delta" || e.stage === "answer_delta") {
+        const d = e.data as Record<string, unknown> | undefined;
+        if (d && d.delta != null) acc += String(d.delta);
+      }
+    }
+    return acc;
+  }, [streamingEvents]);
+
+  const answerGenerationLive = useMemo(
+    () =>
+      streamingEvents.some((e) => e.stage === "answer_generation_start") &&
+      !streamingEvents.some((e) => e.type === "answer"),
+    [streamingEvents],
+  );
 
   const send = async (overrideQuestion?: string) => {
     const question = (overrideQuestion ?? input).trim();
@@ -128,40 +485,130 @@ export default function NewFeatureChatPage() {
     }
     setLastQuestion(question);
     setLoading(true);
+    setStreamingEvents([]);
+
+    const streamed: RagProcessEvent[] = [];
+    let answerAttached = false;
+
+    const pushEvent = (ev: RagProcessEvent) => {
+      streamed.push(ev);
+      setStreamingEvents([...streamed]);
+      if (ev.type === "error") {
+        const detail = (ev.message && ev.message.slice(0, 300)) || "流式处理失败";
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `a_err_${Date.now()}`,
+            role: "assistant",
+            content: `调用失败：${detail}`,
+          },
+        ]);
+        return "error" as const;
+      }
+      if (ev.type === "answer" && !answerAttached && ev.data && typeof ev.data === "object") {
+        answerAttached = true;
+        const d = ev.data as Record<string, unknown>;
+        const ans = String(d.answer ?? "");
+        const model = String(d.model ?? "qwen-plus");
+        const rc = Number(d.retrieved_count ?? 0);
+        const citations = (Array.isArray(d.citations) ? d.citations : []) as NewRagCitation[];
+        // 保留 analysis_delta；排除 answer_delta 以减小落库体积（最终 answer 含 citations）
+        const processSnapshot = streamed.filter(
+          (e) =>
+            e.type !== "done" &&
+            e.type !== "error" &&
+            e.type !== "answer" &&
+            e.type !== "answer_delta",
+        );
+        const normalizedAnswer = normalizeAnswer(ans);
+        const normalizedSources = normalizeSources(citations);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `a_${Date.now()}`,
+            role: "assistant",
+            content: ans || "未获取到回答",
+            processEvents: processSnapshot.length > 0 ? processSnapshot : undefined,
+            answerCard: {
+              answer: normalizedAnswer,
+              sources: normalizedSources,
+              question,
+              modelName: model,
+            },
+          },
+        ]);
+        setLastMeta({ model, retrievedCount: Number.isFinite(rc) ? rc : 0 });
+      }
+      return "continue" as const;
+    };
+
+    const consumeNdjsonLine = (line: string) => {
+      const trimmed = line.trim();
+      if (!trimmed) return;
+      try {
+        const ev = JSON.parse(trimmed) as RagProcessEvent;
+        const r = pushEvent(ev);
+        if (r === "error") {
+          return "error" as const;
+        }
+      } catch {
+        /* 忽略无法解析的行，不展示异常栈 */
+      }
+      return "continue" as const;
+    };
 
     try {
-      const resp = await fetch(`${getApiBaseUrl()}/new-rag/ask`, {
+      const resp = await fetch(`${getApiBaseUrl()}/new-rag/ask-stream`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
         body: JSON.stringify({ question }),
       });
       if (!resp.ok) {
         const text = await resp.text();
-        throw new Error(text || `HTTP ${resp.status}`);
+        throw new Error(text ? text.slice(0, 500) : `HTTP ${resp.status}`);
       }
-      const data = (await resp.json()) as NewRagResponse;
-      const normalizedAnswer = normalizeAnswer(data.answer || "");
-      const normalizedSources = normalizeSources(data.citations || []);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `a_${Date.now()}`,
-          role: "assistant",
-          content: data.answer || "未获取到回答",
-          answerCard: {
-            answer: normalizedAnswer,
-            sources: normalizedSources,
-            question,
-            modelName: data.model || "qwen-plus",
+      const body = resp.body;
+      if (!body) {
+        throw new Error("响应体不可读");
+      }
+      const reader = body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n");
+        buffer = parts.pop() ?? "";
+        for (const part of parts) {
+          const r = consumeNdjsonLine(part);
+          if (r === "error") {
+            setLoading(false);
+            setStreamingEvents([]);
+            return;
+          }
+        }
+      }
+      if (buffer.trim()) {
+        const r = consumeNdjsonLine(buffer);
+        if (r === "error") {
+          setLoading(false);
+          setStreamingEvents([]);
+          return;
+        }
+      }
+      if (!answerAttached) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `a_err_${Date.now()}`,
+            role: "assistant",
+            content: "调用失败：未收到完整回答（流已结束）。",
           },
-        },
-      ]);
-      setLastMeta({
-        model: data.model || "qwen-plus",
-        retrievedCount: Number(data.retrieved_count || 0),
-      });
+        ]);
+      }
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg = error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500);
       setMessages((prev) => [
         ...prev,
         {
@@ -172,75 +619,106 @@ export default function NewFeatureChatPage() {
       ]);
     } finally {
       setLoading(false);
+      setStreamingEvents([]);
     }
   };
 
   return (
-    <div className="flex min-h-full flex-col bg-[#0b1020] text-slate-100">
-      <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-4">
-        <div>
-          <h1 className="text-lg font-semibold">Qwen + 阿里云知识库</h1>
-          <p className="text-xs text-slate-400">每次提问先检索知识库，再由 Qwen 生成答案</p>
+    <div className="flex min-h-full min-w-0 flex-col overflow-x-hidden bg-[var(--app-bg)] text-[var(--app-text)]">
+      <div className="mx-auto flex w-full max-w-6xl min-w-0 items-center justify-between gap-4 px-5 py-6 md:px-8">
+        <div className="min-w-0">
+          <h1 className="text-lg font-semibold tracking-tight text-[var(--app-text)]">
+            Qwen + 阿里云知识库
+          </h1>
+          <p className="mt-1 text-xs text-[var(--app-text-muted)]">每次提问先检索知识库，再由 Qwen 生成答案</p>
         </div>
         {lastMeta ? (
-          <div className="rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-2 text-xs text-slate-300">
+          <div className="shrink-0 rounded-full border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-1.5 text-xs text-[var(--app-text-muted)] shadow-[var(--app-shadow-sm)]">
             模型：{lastMeta.model} · 检索片段：{lastMeta.retrievedCount}
           </div>
         ) : null}
       </div>
 
-      <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-3 px-4 pb-28">
-        <div className="flex-1 space-y-4 overflow-y-auto rounded-2xl border border-slate-800 bg-[#0f172a] p-4">
+      <div className="mx-auto flex w-full max-w-6xl min-w-0 flex-1 flex-col gap-4 px-5 pb-44 md:px-8">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)]/90 p-5 shadow-[var(--app-shadow-sm)] backdrop-blur-sm">
+          <div className="min-h-0 min-w-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden scroll-pb-32 pb-36">
           {messages.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-slate-700 bg-slate-900/40 p-4 text-sm text-slate-400">
+            <div className="rounded-xl border border-dashed border-[var(--app-border)] bg-[var(--app-surface-muted)] p-4 text-sm text-[var(--app-text-muted)]">
               {emptyHint}
             </div>
           ) : null}
-          {messages.map((m) => (
-            <div key={m.id} className={`flex items-start gap-3 ${m.role === "user" ? "justify-end" : ""}`}>
+          {messages.map((m) => {
+            const assistantWithCard = m.role === "assistant" && m.answerCard;
+            const answerCard = m.answerCard;
+            return (
+            <div key={m.id} className={`flex min-w-0 items-start gap-3 ${m.role === "user" ? "justify-end" : ""}`}>
               {m.role === "assistant" ? (
-                <div className="flex size-8 items-center justify-center rounded-full bg-indigo-500/20 text-indigo-200">
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[var(--app-primary-soft)] text-[var(--app-primary)]">
                   <Bot className="size-4" />
                 </div>
               ) : null}
               <div
-                className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-7 ${
-                  m.role === "user" ? "bg-indigo-600 text-white" : "bg-slate-800 text-slate-100"
-                }`}
+                className={
+                  m.role === "user"
+                    ? "max-w-[70%] min-w-0 rounded-[20px] bg-gradient-to-br from-[var(--app-primary)] to-[var(--app-primary-strong)] px-4 py-3 text-sm font-normal leading-7 text-white shadow-[var(--app-shadow-sm)]"
+                    : assistantWithCard
+                      ? "min-w-0 w-full max-w-[min(100%,48rem)] flex-1 space-y-3 text-[var(--app-text)]"
+                      : "min-w-0 max-w-[min(100%,48rem)] flex-1 rounded-[20px] border border-[var(--app-border)] bg-white/95 px-4 py-3 text-sm leading-7 text-[var(--app-text)] shadow-[var(--app-shadow-sm)]"
+                }
               >
-                {m.role === "assistant" && m.answerCard ? (
-                  <QwenKbAnswerCard
-                    answer={m.answerCard.answer}
-                    sources={m.answerCard.sources}
-                    question={m.answerCard.question}
-                    modelName={m.answerCard.modelName}
-                    onRegenerate={() => void send(m.answerCard?.question || lastQuestion)}
-                    onCopy={() => {
-                      // reserved for analytics hook
-                    }}
-                    onFeedback={() => {
-                      // reserved for feedback API hook
-                    }}
-                  />
+                {assistantWithCard && answerCard ? (
+                  <div className="space-y-3">
+                    {m.processEvents && m.processEvents.length > 0 ? (
+                      <ProcessTimeline events={m.processEvents} />
+                    ) : null}
+                    <QwenKbAnswerCard
+                      answer={answerCard.answer}
+                      sources={answerCard.sources}
+                      question={answerCard.question}
+                      modelName={answerCard.modelName}
+                      onRegenerate={() => void send(answerCard.question || lastQuestion)}
+                      onCopy={() => {
+                        // reserved for analytics hook
+                      }}
+                      onFeedback={() => {
+                        // reserved for feedback API hook
+                      }}
+                    />
+                  </div>
                 ) : (
                   m.content
                 )}
               </div>
               {m.role === "user" ? (
-                <div className="flex size-8 items-center justify-center rounded-full bg-indigo-300/20 text-indigo-100">
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[var(--app-primary-soft)] text-[var(--app-primary)]">
                   <User className="size-4" />
                 </div>
               ) : null}
             </div>
-          ))}
-          {loading ? <div className="text-sm text-slate-400">知识库检索与回答生成中...</div> : null}
+            );
+          })}
+          {loading ? (
+            <div className="space-y-2 rounded-[20px] border border-[var(--app-border)] bg-white/85 p-3 shadow-[var(--app-shadow-sm)] backdrop-blur-sm">
+              {streamingEvents.length === 0 ? (
+                <p className="text-xs text-[var(--app-text-subtle)]">正在连接流式服务…</p>
+              ) : null}
+              <ProcessTimeline events={streamingEvents} />
+              {answerGenerationLive ? (
+                <StreamingAnswerDraft
+                  text={streamingAnswerDraft}
+                  pending={!streamingAnswerDraft}
+                />
+              ) : null}
+            </div>
+          ) : null}
+          </div>
         </div>
       </div>
 
-      <div className="fixed bottom-0 left-14 right-0 border-t border-slate-800 bg-[#0b1020]/95 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-5xl items-end gap-2 px-4 py-3">
+      <div className="fixed bottom-0 left-14 right-0 z-10 border-t border-[var(--app-border)]/70 bg-gradient-to-t from-[var(--app-surface)] via-[var(--app-surface)]/95 to-[var(--app-bg)]/35 pt-10 shadow-[0_-12px_40px_-16px_rgba(16,24,40,0.08)] backdrop-blur-[10px]">
+        <div className="mx-auto flex w-full max-w-6xl min-w-0 items-end gap-3 px-5 pb-5 pt-0 md:px-8">
           <textarea
-            className="min-h-12 max-h-48 flex-1 resize-y rounded-xl border border-slate-700 bg-slate-900 p-3 text-sm outline-none focus:border-indigo-500"
+            className="min-h-12 max-h-48 min-w-0 flex-1 resize-y rounded-[20px] border border-[var(--app-border)] bg-white p-3.5 text-sm text-[var(--app-text)] shadow-[var(--app-shadow-sm)] outline-none transition-[box-shadow,border-color] focus:border-[var(--app-primary)] focus:ring-2 focus:ring-[var(--app-primary)]/20"
             placeholder="输入问题，回车发送（Shift+Enter 换行）"
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -255,10 +733,10 @@ export default function NewFeatureChatPage() {
             type="button"
             disabled={loading || !input.trim()}
             onClick={() => void send()}
-            className="inline-flex h-12 items-center gap-1 rounded-xl bg-indigo-600 px-4 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-12 min-w-[5.5rem] shrink-0 items-center justify-center gap-2 rounded-[20px] bg-gradient-to-br from-[var(--app-primary)] to-[var(--app-primary-strong)] px-4 text-sm font-medium text-white shadow-[var(--app-shadow-sm)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-45"
           >
-            <Send className="size-4" />
-            发送
+            {loading ? <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden /> : <Send className="size-4 shrink-0" aria-hidden />}
+            {loading ? "发送中" : "发送"}
           </button>
         </div>
       </div>

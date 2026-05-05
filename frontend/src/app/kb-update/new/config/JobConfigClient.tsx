@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { TREATY_TYPES, isLawType, lawTypeLabel, type LawType } from "../../_lib/config";
 import { createKBUpdateJob } from "@/services/api";
 import type { KBStepId } from "@/types";
+import { kbCard, kbCardPadding, kbInput, kbPrimaryBtn, kbSecondaryBtn, kbSection } from "../../_lib/ui";
 
 export function JobConfigClient(props: {
   lawTypeParam: string | null;
@@ -115,55 +116,47 @@ export function JobConfigClient(props: {
   }
 
   return (
-    <section className="mx-auto w-full max-w-4xl space-y-6 p-6 md:p-10">
+    <section className={kbSection("max-w-4xl")}>
       <header>
-        <h1 className="text-2xl font-semibold text-slate-900">参数配置</h1>
-        <p className="mt-2 text-sm text-slate-600">
+        <h1 className="text-2xl font-semibold text-[var(--app-text)]">参数配置</h1>
+        <p className="mt-2 text-sm text-[var(--app-text-muted)]">
           已选步骤：{selectedActionLabels.join(" / ")}。确认参数后开始执行。
         </p>
       </header>
 
       {validationMsg ? (
-        <p className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+        <p className="rounded-xl border border-[var(--app-border)] bg-[var(--app-danger-soft)] p-4 text-sm text-[var(--app-danger)]">
           {validationMsg}
         </p>
       ) : null}
 
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className={`${kbCard} ${kbCardPadding}`}>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {!isTreaty && needsPageRange ? (
             <>
               <label className="space-y-1 text-sm">
-                <div className="font-medium text-slate-700">起始页（0 表示全库）</div>
-                <input
-                  value={startPage}
-                  onChange={(e) => setStartPage(e.target.value)}
-                  className="h-9 w-full rounded-md border border-slate-200 px-3"
-                />
+                <div className="font-medium text-[var(--app-text)]">起始页（0 表示全库）</div>
+                <input value={startPage} onChange={(e) => setStartPage(e.target.value)} className={`${kbInput} h-9`} />
               </label>
               <label className="space-y-1 text-sm">
-                <div className="font-medium text-slate-700">末页（0 表示全库）</div>
-                <input
-                  value={endPage}
-                  onChange={(e) => setEndPage(e.target.value)}
-                  className="h-9 w-full rounded-md border border-slate-200 px-3"
-                />
+                <div className="font-medium text-[var(--app-text)]">末页（0 表示全库）</div>
+                <input value={endPage} onChange={(e) => setEndPage(e.target.value)} className={`${kbInput} h-9`} />
               </label>
             </>
           ) : null}
 
           {isTreaty ? (
             <label className="space-y-1 text-sm">
-              <div className="font-medium text-slate-700">条约起始页</div>
+              <div className="font-medium text-[var(--app-text)]">条约起始页</div>
               <input
                 value={treatyStartPage}
                 onChange={(e) => setTreatyStartPage(e.target.value)}
-                className="h-9 w-full rounded-md border border-slate-200 px-3"
+                className={`${kbInput} h-9`}
               />
             </label>
           ) : null}
 
-          <label className="flex items-center gap-2 text-sm text-slate-700">
+          <label className="flex items-center gap-2 text-sm text-[var(--app-text)] md:col-span-2">
             <input
               type="checkbox"
               checked={downloadPdf}
@@ -174,8 +167,8 @@ export function JobConfigClient(props: {
         </div>
 
         {cleaningPaths ? (
-          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
-            <div className="font-medium">清洗产物路径（参考）</div>
+          <div className="mt-4 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)]/70 p-3 text-xs text-[var(--app-text-muted)]">
+            <div className="font-medium text-[var(--app-text)]">清洗产物路径（参考）</div>
             <div className="mt-1 font-mono whitespace-pre-wrap">
               {`uploadDir: ${cleaningPaths.uploadDir}\nmasterPath: ${cleaningPaths.masterPath}\nreportPath: ${cleaningPaths.reportPath}`}
             </div>
@@ -183,24 +176,20 @@ export function JobConfigClient(props: {
         ) : null}
 
         {submitError ? (
-          <p className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+          <p className="mt-4 rounded-xl border border-[var(--app-border)] bg-[var(--app-danger-soft)] p-3 text-sm text-[var(--app-danger)]">
             {submitError}
           </p>
         ) : null}
 
         <div className="mt-6 flex flex-wrap items-center justify-end gap-3">
-          <button
-            type="button"
-            onClick={handleBack}
-            className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
-          >
+          <button type="button" onClick={handleBack} className={kbSecondaryBtn}>
             返回
           </button>
           <button
             type="button"
             onClick={handleSubmit}
             disabled={Boolean(validationMsg) || submitting}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+            className={kbPrimaryBtn}
           >
             {submitting ? "创建中…" : "创建任务并执行"}
           </button>
@@ -209,4 +198,3 @@ export function JobConfigClient(props: {
     </section>
   );
 }
-

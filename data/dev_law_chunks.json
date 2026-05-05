@@ -1,0 +1,54 @@
+[
+  {
+    "ref_id": "dev-contract-001",
+    "law_name": "中华人民共和国民法典（合同编节选·示例）",
+    "law_type": "法律",
+    "effective_status": "有效",
+    "publish_date": "2020-05-28",
+    "effective_date": "2021-01-01",
+    "chapter": "第三编 合同",
+    "article": "第四百六十五条",
+    "text": "依法成立的合同，受法律保护。依法成立的合同，仅对当事人具有法律约束力，但是法律另有规定的除外。本条为开发环境示例条文，用于测试 RAG 引用与悬浮标注。",
+    "source_url": "https://flk.npc.gov.cn/",
+    "score": 0.92
+  },
+  {
+    "ref_id": "dev-labor-002",
+    "law_name": "中华人民共和国劳动合同法（节选·示例）",
+    "law_type": "法律",
+    "effective_status": "有效",
+    "publish_date": "2007-06-29",
+    "effective_date": "2008-01-01",
+    "chapter": "第二章 劳动合同的订立",
+    "article": "第十条",
+    "text": "建立劳动关系，应当订立书面劳动合同。已建立劳动关系，未同时订立书面劳动合同的，应当自用工之日起一个月内订立书面劳动合同。示例文本用于关键词「劳动合同」命中测试。",
+    "source_url": "https://flk.npc.gov.cn/",
+    "score": 0.88
+  },
+  {
+    "ref_id": "dev-civil-003",
+    "law_name": "中华人民共和国民法典（总则编节选·示例）",
+    "law_type": "法律",
+    "effective_status": "有效",
+    "publish_date": "2020-05-28",
+    "effective_date": "2021-01-01",
+    "chapter": "第一编 总则",
+    "article": "第十三条",
+    "text": "自然人从出生时起到死亡时止，具有民事权利能力，依法享有民事权利，承担民事义务。本示例用于无关键词命中时的默认召回与引用编号展示。",
+    "source_url": "https://flk.npc.gov.cn/",
+    "score": 0.75
+  },
+  {
+    "ref_id": "dev-invalid-004",
+    "law_name": "示例已废止法规（应被过滤）",
+    "law_type": "法律",
+    "effective_status": "已废止",
+    "publish_date": "1999-01-01",
+    "effective_date": "1999-10-01",
+    "chapter": "示例章节",
+    "article": "第一条",
+    "text": "本条记录时效性为已废止，LocalKBService 不应将其纳入检索结果。",
+    "source_url": "https://flk.npc.gov.cn/",
+    "score": 0.99
+  }
+]

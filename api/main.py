@@ -1,14 +1,18 @@
 from __future__ import annotations
 
-from dotenv import load_dotenv
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-
-from api.kb_update_api import router as kb_update_router
 import json
 import os
 import time
 from typing import Any, Dict
+
+from dotenv import load_dotenv
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+load_dotenv()
+
+from api.kb_update_api import router as kb_update_router
+from new_feature_qwen_kb import router as new_rag_router
 
 
 # region agent log
@@ -35,27 +39,7 @@ def _dbg_log(*, hypothesis_id: str, location: str, message: str, data: Dict[str,
 _dbg_log(hypothesis_id="H_router", location="api/main.py:import", message="api.main import started", data={})
 # endregion agent log
 
-try:
-    from new_feature_qwen_kb import router as new_rag_router
-except Exception as exc:  # pragma: no cover - allow partial startup
-    new_rag_router = None
-    # region agent log
-    _dbg_log(
-        hypothesis_id="H_router",
-        location="api/main.py:new_feature_qwen_kb_import",
-        message="new_feature_qwen_kb router import failed",
-        data={"error": str(exc), "type": type(exc).__name__},
-    )
-    # endregion agent log
-
-try:
-    from api.qa_api import router as qa_router
-except Exception:  # pragma: no cover - allow partial startup for kb-update APIs
-    qa_router = None
-
-
-load_dotenv()
-app = FastAPI(title="Legal Contract Review API", version="0.1.0")
+app = FastAPI(title="Legal AI API", version="0.1.0")
 
 # Frontend calls this API directly from the browser (Next.js on :3000),
 # so CORS must be enabled for local dev and configurable deployments.
@@ -71,8 +55,4 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(kb_update_router)
-if new_rag_router is not None:
-    app.include_router(new_rag_router)
-if qa_router is not None:
-    app.include_router(qa_router)
-
+app.include_router(new_rag_router)
