@@ -5,11 +5,46 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 MISSING = "未提供"
 
 _ARTICLE_NO_RE = re.compile(r"第[0-9零一二三四五六七八九十百千万〇两]+条")
+
+# 来源信息 key → 内部字段（同一字段多个别名；较长标签优先参与正则匹配）
+_LABEL_TO_FIELD: Dict[str, str] = {
+    # law_name
+    "法规名称": "law_name",
+    "法规名": "law_name",
+    "名称": "law_name",
+    # law_type
+    "法规类型": "law_type",
+    "文件类型": "law_type",
+    "类型": "law_type",
+    # effective_status
+    "效力状态": "effective_status",
+    "时效状态": "effective_status",
+    "时效性": "effective_status",
+    # publish_date
+    "公布日期": "publish_date",
+    "发布日期": "publish_date",
+    # effective_date
+    "生效日期": "effective_date",
+    "施行日期": "effective_date",
+    "实施日期": "effective_date",
+    # source_url
+    "来源链接": "source_url",
+    "链接": "source_url",
+    "URL": "source_url",
+    "url": "source_url",
+}
+
+_LABELS_SORTED: List[str] = sorted(_LABEL_TO_FIELD.keys(), key=len, reverse=True)
+_SOURCE_PART_SPLIT_RE = re.compile(r"\s*[\|｜]\s*")
+_SOURCE_KV_RE = re.compile(
+    "^(" + "|".join(re.escape(k) for k in _LABELS_SORTED) + r")\s*[:：]\s*(.*)$",
+    re.DOTALL,
+)
 
 
 def parse_law_chunk_text(text: str) -> Dict[str, Any]:
@@ -17,7 +52,8 @@ def parse_law_chunk_text(text: str) -> Dict[str, Any]:
     从知识库切片纯文本解析结构化字段（不调用外部服务）。
 
     典型格式：
-    【来源信息】法规名：... | 类型：... | 时效性：... | 公布日期：... | 生效日期：... | 链接：...
+    【来源信息】法规名：... | 类型：... | ...
+    或全角分隔符：法规名称：...｜法规类型：...｜...
     【章节】...
     【法规正文】...
 
@@ -41,28 +77,23 @@ def parse_law_chunk_text(text: str) -> Dict[str, Any]:
         seg = (segment or "").strip()
         if not seg:
             return
-        for part in re.split(r"\s*\|\s*", seg):
+        for part in _SOURCE_PART_SPLIT_RE.split(seg):
             p = part.strip()
             if not p:
                 continue
-            m = re.match(r"^(法规名|类型|时效性|公布日期|生效日期|链接)\s*[:：]\s*(.*)$", p, re.DOTALL)
+            m = _SOURCE_KV_RE.match(p)
             if not m:
                 continue
-            key, val = m.group(1), m.group(2).strip()
+            label, val = m.group(1), m.group(2).strip()
             if not val:
                 continue
-            if key == "法规名":
-                base["law_name"] = val
-            elif key == "类型":
-                base["law_type"] = val
-            elif key == "时效性":
-                base["effective_status"] = val
-            elif key == "公布日期":
-                base["publish_date"] = val
-            elif key == "生效日期":
-                base["effective_date"] = val
-            elif key == "链接":
+            field = _LABEL_TO_FIELD.get(label)
+            if not field:
+                continue
+            if field == "source_url":
                 base["source_url"] = val if val else None
+            else:
+                base[field] = val
 
     m_src = re.search(r"【来源信息】\s*(.*?)(?=【(?:章节|法规正文)】)", raw, re.DOTALL)
     if m_src:

@@ -19,6 +19,102 @@ from services.law_chunk_parse import (
 
 logger = logging.getLogger(__name__)
 
+_LAW_NAME_INVALID_EXACT = frozenset(
+    {
+        "",
+        "【",
+        "】",
+        "【来源信息】",
+        "来源信息",
+        "法规名",
+        "法规名称",
+        "未提供",
+        "none",
+        "null",
+    }
+)
+
+_STRONG_LAW_NAME_META_KEYS = (
+    "law_name",
+    "lawName",
+    "regulation_name",
+    "regulationName",
+)
+
+_WEAK_LAW_NAME_META_KEYS = (
+    "document_name",
+    "documentName",
+    "doc_name",
+    "docName",
+    "title",
+    "hier_title",
+    "file_name",
+    "fileName",
+)
+
+
+def _clean_law_name(value: Any) -> str:
+    """
+    清洗法规名称候选值；无效时返回空串（由调用方继续下一优先级或兜底 MISSING）。
+    """
+    if value is None:
+        return ""
+    s = str(value).strip()
+    if not s:
+        return ""
+    low = s.casefold()
+    if low in ("none", "null"):
+        return ""
+    if s in _LAW_NAME_INVALID_EXACT:
+        return ""
+    # 去除首尾明显包裹/分隔符号（迭代剥离，避免 metadata 仅为括号残留）
+    prev = None
+    while prev != s:
+        prev = s
+        s = s.strip().strip("【】").strip()
+    if not s:
+        return ""
+    if s.startswith("【章节】") or s.startswith("【法规正文】"):
+        return ""
+    if s in _LAW_NAME_INVALID_EXACT:
+        return ""
+    has_letter_or_cjk = any(
+        ch.isalnum() or ("\u4e00" <= ch <= "\u9fff") for ch in s
+    )
+    if len(s) <= 3 and not has_letter_or_cjk:
+        return ""
+    return s
+
+
+def _first_clean_law_name_from_meta(meta: Dict[str, Any], keys: Tuple[str, ...]) -> str:
+    for k in keys:
+        cleaned = _clean_law_name(meta.get(k))
+        if cleaned:
+            return cleaned
+    return ""
+
+
+def _resolve_law_name(meta: Dict[str, Any], parsed: Dict[str, Any]) -> str:
+    """
+    law_name 取值优先级（每层均经 _clean_law_name；parsed 的「未提供」不计入有效正文解析）：
+    1) 强 metadata：law_name / lawName / regulation_name / regulationName
+    2) 正文解析：parse_law_chunk_text 的法规名（非 MISSING）
+    3) 弱 metadata：document_name / … / title / hier_title / file_name
+    4) 兜底：MISSING（「未提供」）
+    """
+    strong = _first_clean_law_name_from_meta(meta, _STRONG_LAW_NAME_META_KEYS)
+    if strong:
+        return strong
+    raw_parsed = parsed.get("law_name")
+    if raw_parsed not in (None, "", MISSING):
+        cleaned_p = _clean_law_name(raw_parsed)
+        if cleaned_p:
+            return cleaned_p
+    weak = _first_clean_law_name_from_meta(meta, _WEAK_LAW_NAME_META_KEYS)
+    if weak:
+        return weak
+    return MISSING
+
 
 def _meta_pick(meta: Dict[str, Any], *keys: str) -> Optional[str]:
     for k in keys:
@@ -148,9 +244,7 @@ class AliyunKBService:
         node_text = str(node.get("Text") or "").strip()
         parsed = parse_law_chunk_text(node_text)
 
-        law_name = _meta_pick(meta, "law_name", "regulation_name", "title", "hier_title", "doc_name") or parsed[
-            "law_name"
-        ]
+        law_name = _resolve_law_name(meta, parsed)
         law_type = _meta_pick(meta, "law_type", "type", "doc_type", "category", "法律类型") or parsed["law_type"]
         effective_status = _meta_pick(
             meta, "effective_status", "legal_status", "timeliness", "时效性", "status_text"
