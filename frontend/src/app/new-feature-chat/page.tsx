@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Bot, Loader2, Send, User } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Bot, Loader2, MessageSquarePlus, Send, User } from "lucide-react";
 import {
   PLACEHOLDER_BASIS,
   PLACEHOLDER_RISK,
@@ -9,24 +9,19 @@ import {
   QwenKbAnswerCard,
   type QwenAnswer,
 } from "@/components/chat/QwenKbAnswerCard";
+import { ChatSessionSidebar } from "@/components/chat/ChatSessionSidebar";
 import { ProcessTimeline } from "@/components/chat/ProcessTimeline";
 import { StreamingAnswerDraft } from "@/components/chat/StreamingAnswerDraft";
-import type { QwenKbSource, RagProcessEvent } from "@/types";
-
-type Role = "user" | "assistant";
-
-type ChatItem = {
-  id: string;
-  role: Role;
-  content: string;
-  processEvents?: RagProcessEvent[];
-  answerCard?: {
-    answer: QwenAnswer;
-    sources: QwenKbSource[];
-    question: string;
-    modelName: string;
-  };
-};
+import {
+  createChatSession,
+  generateSessionTitle,
+  getActiveSessionId,
+  getChatSessions,
+  saveChatSessions,
+  setActiveSessionId as persistActiveSessionId,
+  updateChatSession,
+} from "@/lib/chat-sessions";
+import type { ChatItem, ChatSession, QwenKbSource, RagProcessEvent } from "@/types";
 
 type NewRagCitation = {
   ref_id?: string;
@@ -446,6 +441,26 @@ function normalizeSources(citations: NewRagResponse["citations"]): QwenKbSource[
   return result.sort((a, b) => a.id - b.id);
 }
 
+function deriveLastQuestionFromMessages(messages: ChatItem[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === "user") return messages[i].content;
+  }
+  return "";
+}
+
+function deriveLastMetaFromMessages(messages: ChatItem[]): { model: string; retrievedCount: number } | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role === "assistant" && m.answerCard) {
+      const ac = m.answerCard;
+      const rcRaw = ac.retrievedCount ?? ac.sources?.length ?? 0;
+      const rc = typeof rcRaw === "number" && Number.isFinite(rcRaw) ? rcRaw : 0;
+      return { model: ac.modelName, retrievedCount: rc };
+    }
+  }
+  return null;
+}
+
 export default function NewFeatureChatPage() {
   const [messages, setMessages] = useState<ChatItem[]>([]);
   const [input, setInput] = useState("");
@@ -453,6 +468,76 @@ export default function NewFeatureChatPage() {
   const [streamingEvents, setStreamingEvents] = useState<RagProcessEvent[]>([]);
   const [lastMeta, setLastMeta] = useState<{ model: string; retrievedCount: number } | null>(null);
   const [lastQuestion, setLastQuestion] = useState("");
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [sessionReady, setSessionReady] = useState(false);
+  const activeSessionIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    activeSessionIdRef.current = activeSessionId;
+  }, [activeSessionId]);
+
+  useEffect(() => {
+    const stored = getChatSessions();
+    const activeId = getActiveSessionId();
+    const session = activeId ? stored.find((s) => s.id === activeId) : undefined;
+
+    if (session) {
+      activeSessionIdRef.current = session.id;
+      setActiveSessionId(session.id);
+      setMessages(session.messages);
+      setLastQuestion(deriveLastQuestionFromMessages(session.messages));
+      setLastMeta(deriveLastMetaFromMessages(session.messages));
+    } else {
+      const newSess = createChatSession("新对话");
+      saveChatSessions([newSess, ...stored]);
+      persistActiveSessionId(newSess.id);
+      activeSessionIdRef.current = newSess.id;
+      setActiveSessionId(newSess.id);
+      setMessages([]);
+      setLastQuestion("");
+      setLastMeta(null);
+    }
+    setSessions(getChatSessions());
+    setSessionReady(true);
+  }, []);
+
+  const refreshSessionsList = useCallback(() => {
+    setSessions(getChatSessions());
+  }, []);
+
+  const handleNewSession = useCallback(() => {
+    if (loading) return;
+    const newSess = createChatSession("新对话");
+    const rest = getChatSessions();
+    saveChatSessions([newSess, ...rest]);
+    persistActiveSessionId(newSess.id);
+    activeSessionIdRef.current = newSess.id;
+    setActiveSessionId(newSess.id);
+    setMessages([]);
+    setInput("");
+    setStreamingEvents([]);
+    setLastMeta(null);
+    setLastQuestion("");
+    setSessions(getChatSessions());
+  }, [loading]);
+
+  const handleSelectSession = useCallback(
+    (sessionId: string) => {
+      if (loading) return;
+      const session = getChatSessions().find((s) => s.id === sessionId);
+      if (!session) return;
+      persistActiveSessionId(session.id);
+      activeSessionIdRef.current = session.id;
+      setActiveSessionId(session.id);
+      setMessages(session.messages);
+      setStreamingEvents([]);
+      setInput("");
+      setLastQuestion(deriveLastQuestionFromMessages(session.messages));
+      setLastMeta(deriveLastMetaFromMessages(session.messages));
+    },
+    [loading],
+  );
 
   const emptyHint = useMemo(() => "示例：竞业限制协议最多约定几年？", []);
 
@@ -476,10 +561,31 @@ export default function NewFeatureChatPage() {
 
   const send = async (overrideQuestion?: string) => {
     const question = (overrideQuestion ?? input).trim();
-    if (!question || loading) return;
+    if (!question || loading || !sessionReady || !activeSessionIdRef.current) return;
 
-    const userMsg: ChatItem = { id: `u_${Date.now()}`, role: "user", content: question };
-    setMessages((prev) => [...prev, userMsg]);
+    const nowIso = new Date().toISOString();
+    const userMsg: ChatItem = {
+      id: `u_${Date.now()}`,
+      role: "user",
+      content: question,
+      createdAt: nowIso,
+    };
+    setMessages((prev) => {
+      const next = [...prev, userMsg];
+      const sid = activeSessionIdRef.current;
+      if (sid) {
+        const all = getChatSessions();
+        const sess = all.find((s) => s.id === sid);
+        const needTitle =
+          sess != null && (sess.title === "新对话" || !String(sess.title ?? "").trim());
+        updateChatSession(sid, {
+          messages: next,
+          ...(needTitle ? { title: generateSessionTitle(question) } : {}),
+        });
+      }
+      return next;
+    });
+    queueMicrotask(refreshSessionsList);
     if (!overrideQuestion) {
       setInput("");
     }
@@ -495,14 +601,21 @@ export default function NewFeatureChatPage() {
       setStreamingEvents([...streamed]);
       if (ev.type === "error") {
         const detail = (ev.message && ev.message.slice(0, 300)) || "流式处理失败";
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `a_err_${Date.now()}`,
-            role: "assistant",
-            content: `调用失败：${detail}`,
-          },
-        ]);
+        const errMsg: ChatItem = {
+          id: `a_err_${Date.now()}`,
+          role: "assistant",
+          content: `调用失败：${detail}`,
+          createdAt: new Date().toISOString(),
+        };
+        setMessages((prev) => {
+          const next = [...prev, errMsg];
+          const sid = activeSessionIdRef.current;
+          if (sid) {
+            updateChatSession(sid, { messages: next });
+          }
+          return next;
+        });
+        queueMicrotask(refreshSessionsList);
         return "error" as const;
       }
       if (ev.type === "answer" && !answerAttached && ev.data && typeof ev.data === "object") {
@@ -522,22 +635,31 @@ export default function NewFeatureChatPage() {
         );
         const normalizedAnswer = normalizeAnswer(ans);
         const normalizedSources = normalizeSources(citations);
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `a_${Date.now()}`,
-            role: "assistant",
-            content: ans || "未获取到回答",
-            processEvents: processSnapshot.length > 0 ? processSnapshot : undefined,
-            answerCard: {
-              answer: normalizedAnswer,
-              sources: normalizedSources,
-              question,
-              modelName: model,
-            },
+        const retrievedCount = Number.isFinite(rc) ? rc : 0;
+        const assistantMsg: ChatItem = {
+          id: `a_${Date.now()}`,
+          role: "assistant",
+          content: ans || "未获取到回答",
+          createdAt: new Date().toISOString(),
+          processEvents: processSnapshot.length > 0 ? processSnapshot : undefined,
+          answerCard: {
+            answer: normalizedAnswer,
+            sources: normalizedSources,
+            question,
+            modelName: model,
+            retrievedCount,
           },
-        ]);
-        setLastMeta({ model, retrievedCount: Number.isFinite(rc) ? rc : 0 });
+        };
+        setMessages((prev) => {
+          const next = [...prev, assistantMsg];
+          const sid = activeSessionIdRef.current;
+          if (sid) {
+            updateChatSession(sid, { messages: next });
+          }
+          return next;
+        });
+        queueMicrotask(refreshSessionsList);
+        setLastMeta({ model, retrievedCount });
       }
       return "continue" as const;
     };
@@ -598,25 +720,39 @@ export default function NewFeatureChatPage() {
         }
       }
       if (!answerAttached) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `a_err_${Date.now()}`,
-            role: "assistant",
-            content: "调用失败：未收到完整回答（流已结束）。",
-          },
-        ]);
+        const incompleteMsg: ChatItem = {
+          id: `a_err_${Date.now()}`,
+          role: "assistant",
+          content: "调用失败：未收到完整回答（流已结束）。",
+          createdAt: new Date().toISOString(),
+        };
+        setMessages((prev) => {
+          const next = [...prev, incompleteMsg];
+          const sid = activeSessionIdRef.current;
+          if (sid) {
+            updateChatSession(sid, { messages: next });
+          }
+          return next;
+        });
+        queueMicrotask(refreshSessionsList);
       }
     } catch (error) {
       const msg = error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `a_err_${Date.now()}`,
-          role: "assistant",
-          content: `调用失败：${msg}`,
-        },
-      ]);
+      const failMsg: ChatItem = {
+        id: `a_err_${Date.now()}`,
+        role: "assistant",
+        content: `调用失败：${msg}`,
+        createdAt: new Date().toISOString(),
+      };
+      setMessages((prev) => {
+        const next = [...prev, failMsg];
+        const sid = activeSessionIdRef.current;
+        if (sid) {
+          updateChatSession(sid, { messages: next });
+        }
+        return next;
+      });
+      queueMicrotask(refreshSessionsList);
     } finally {
       setLoading(false);
       setStreamingEvents([]);
@@ -625,6 +761,31 @@ export default function NewFeatureChatPage() {
 
   return (
     <div className="flex min-h-full min-w-0 flex-col overflow-x-hidden bg-[var(--app-bg)] text-[var(--app-text)]">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row md:items-stretch">
+        <aside className="hidden h-auto min-h-0 w-[280px] max-w-full shrink-0 border-[var(--app-border)] bg-[var(--app-surface)] md:flex md:border-r">
+          <ChatSessionSidebar
+            sessions={sessions}
+            activeSessionId={activeSessionId}
+            loading={loading}
+            onNewSession={handleNewSession}
+            onSelectSession={handleSelectSession}
+          />
+        </aside>
+
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden">
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--app-border)] bg-[var(--app-surface)]/95 px-3 py-2 md:hidden">
+            <span className="text-sm font-semibold text-[var(--app-text)]">对话</span>
+            <button
+              type="button"
+              disabled={loading || !sessionReady}
+              onClick={handleNewSession}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-br from-[var(--app-primary)] to-[var(--app-primary-strong)] px-3 py-2 text-xs font-medium text-white shadow-[var(--app-shadow-sm)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              <MessageSquarePlus className="size-3.5 shrink-0" aria-hidden />
+              新对话
+            </button>
+          </div>
+
       <div className="mx-auto flex w-full max-w-6xl min-w-0 items-center justify-between gap-4 px-5 py-6 md:px-8">
         <div className="min-w-0">
           <h1 className="text-lg font-semibold tracking-tight text-[var(--app-text)]">
@@ -714,6 +875,8 @@ export default function NewFeatureChatPage() {
           </div>
         </div>
       </div>
+        </div>
+      </div>
 
       <div className="fixed bottom-0 left-14 right-0 z-10 border-t border-[var(--app-border)]/70 bg-gradient-to-t from-[var(--app-surface)] via-[var(--app-surface)]/95 to-[var(--app-bg)]/35 pt-10 shadow-[0_-12px_40px_-16px_rgba(16,24,40,0.08)] backdrop-blur-[10px]">
         <div className="mx-auto flex w-full max-w-6xl min-w-0 items-end gap-3 px-5 pb-5 pt-0 md:px-8">
@@ -731,7 +894,7 @@ export default function NewFeatureChatPage() {
           />
           <button
             type="button"
-            disabled={loading || !input.trim()}
+            disabled={loading || !input.trim() || !sessionReady}
             onClick={() => void send()}
             className="inline-flex h-12 min-w-[5.5rem] shrink-0 items-center justify-center gap-2 rounded-[20px] bg-gradient-to-br from-[var(--app-primary)] to-[var(--app-primary-strong)] px-4 text-sm font-medium text-white shadow-[var(--app-shadow-sm)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-45"
           >

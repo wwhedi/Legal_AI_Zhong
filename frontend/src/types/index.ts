@@ -1,3 +1,5 @@
+import type { QwenAnswer } from "@/components/chat/QwenKbAnswerCard";
+
 /** /new-rag/ask-stream NDJSON 过程事件（与后端字段对齐） */
 export type RagProcessEventType =
   | "progress"
@@ -119,3 +121,29 @@ export interface QwenKbSource {
   sourceUrl: string | null;
   score?: number;
 }
+
+/** 知识库问答页单条消息（与 new-feature-chat 页内 ChatItem 对齐，供会话持久化复用） */
+export type ChatItem = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  processEvents?: RagProcessEvent[];
+  answerCard?: {
+    answer: QwenAnswer;
+    sources: QwenKbSource[];
+    question: string;
+    modelName: string;
+    retrievedCount?: number;
+  };
+  createdAt?: string;
+};
+
+/** 本地会话容器（localStorage v1） */
+export type ChatSession = {
+  schemaVersion: 1;
+  id: string;
+  title: string;
+  messages: ChatItem[];
+  createdAt: string;
+  updatedAt: string;
+};
