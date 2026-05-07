@@ -772,7 +772,7 @@ class QwenKBRagService:
                     etype="progress",
                     stage="answer_generation_start",
                     title="正式回答生成中",
-                    message="正在生成结论、依据、风险点和建议。",
+                    message="正在生成一句话结论、行动建议、风险提示和法律依据。",
                     data={},
                 )
                 yield _emit_timing_event(
@@ -819,7 +819,7 @@ class QwenKBRagService:
                     etype="progress",
                     stage="answer_generation_start",
                     title="正式回答生成中",
-                    message="正在生成结论、依据、风险点和建议。",
+                    message="正在生成一句话结论、行动建议、风险提示和法律依据。",
                     data={},
                 )
                 yield _emit_timing_event(
@@ -957,7 +957,7 @@ class QwenKBRagService:
                 etype="progress",
                 stage="answer_generation_start",
                 title="正式回答生成中",
-                message="正在生成结论、依据、风险点和建议。",
+                message="正在生成一句话结论、行动建议、风险提示和法律依据。",
                 data={},
             )
 

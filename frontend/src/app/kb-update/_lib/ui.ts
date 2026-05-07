@@ -1,6 +1,7 @@
 /** Shared kb-update route visuals aligned with app tokens (light AI shell). */
 
-export const kbPageShell = "min-h-full w-full bg-[var(--app-bg)]";
+export const kbPageShell =
+  "h-full min-h-0 w-full overflow-x-hidden overflow-y-auto overscroll-y-contain bg-[var(--app-bg)]";
 
 export const kbSection = (maxWidthClass: string) =>
   `${kbPageShell} mx-auto ${maxWidthClass} space-y-6 p-6 md:p-10`;

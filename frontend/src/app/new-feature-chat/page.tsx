@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bot, Loader2, MessageSquarePlus, Send, User } from "lucide-react";
+import { Bot, Loader2, MessageSquarePlus, Send, User, X } from "lucide-react";
 import {
   PLACEHOLDER_BASIS,
   PLACEHOLDER_RISK,
@@ -21,6 +21,7 @@ import {
   setActiveSessionId as persistActiveSessionId,
   updateChatSession,
 } from "@/lib/chat-sessions";
+import { cn } from "@/lib/utils";
 import type { ChatItem, ChatSession, QwenKbSource, RagProcessEvent } from "@/types";
 
 type NewRagCitation = {
@@ -65,89 +66,428 @@ function parseRefIdToNumber(refId?: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-type SectionKind = "conclusion" | "basis" | "risk" | "suggestion";
+type SectionKind = "conclusion" | "basis" | "risks" | "actionAdvice" | "actionSteps";
 
-/** 列表项「- [1] …」不是小节标题 */
+type SectionHeaderRule = {
+  kind: SectionKind;
+  friendly: boolean;
+  match: RegExp;
+  strips: RegExp[];
+  /** 优先尝试：同一行标题+正文、顿号编号等；捕获组为剩余正文（可为空） */
+  flexStrips?: RegExp[];
+};
+
+/** 小节编号前缀：1) 1）1、1. 一、 等（不依赖 \\b） */
+const SEC_P1 = "(?:[1１]\\s*(?:[)）]|[、,，]|[.．])\\s*|[一]\\s*[、,，.]\\s*)";
+const SEC_P2 = "(?:[2２]\\s*(?:[)）]|[、,，]|[.．])\\s*|[二]\\s*[、,，.]\\s*)";
+const SEC_P3 = "(?:[3３]\\s*(?:[)）]|[、,，]|[.．])\\s*|[三]\\s*[、,，.]\\s*)";
+const SEC_P4 = "(?:[4４]\\s*(?:[)）]|[、,，]|[.．])\\s*|[四]\\s*[、,，.]\\s*)";
+const SEC_P5 = "(?:[5５]\\s*(?:[)）]|[、,，]|[.．])\\s*|[五]\\s*[、,，.]\\s*)";
+
+/** 列表项「- [1] …」不是小节标题；不把引用 [n] 当章节号 */
 function isCitationListLine(line: string): boolean {
   return /^\s*[-*•]\s*\[\d+\]/.test(line.trimStart());
 }
 
-/** 识别 1)结论 / 2)依据 / 3)风险点 / 4)建议 等标题；不把 [n] 当结构编号 */
-function detectSectionHeaderLine(line: string): SectionKind | null {
+/** 标题匹配：顺序靠前的优先（避免「行动建议」被「建议」吃掉等） */
+const SECTION_HEADER_RULES: SectionHeaderRule[] = [
+  {
+    kind: "actionSteps",
+    friendly: true,
+    match: new RegExp(`^\\s*${SEC_P4}可执行操作步骤`),
+    flexStrips: [new RegExp(`^\\s*${SEC_P4}可执行操作步骤\\s*(.*)$`, "s")],
+    strips: [
+      /^\s*(?:(?:[4４]\s*(?:[)）]|[、,，]|[.．])\s*|[四]\s*[、,，.]\s*|4\s*\.)\s*)可执行操作步骤(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*(?:(?:[4４]\s*(?:[)）]|[、,，]|[.．])\s*|[四]\s*[、,，.]\s*|4\s*\.)\s*)可执行操作步骤\s*$/s,
+    ],
+  },
+  {
+    kind: "actionSteps",
+    friendly: true,
+    match: new RegExp(
+      `^\\s*${SEC_P4}(?:办理步骤|处理步骤|执行步骤|流程步骤|操作步骤)`,
+    ),
+    flexStrips: [
+      new RegExp(
+        `^\\s*${SEC_P4}(?:办理步骤|处理步骤|执行步骤|流程步骤|操作步骤)\\s*(.*)$`,
+        "s",
+      ),
+    ],
+    strips: [
+      /^\s*(?:(?:[4４]\s*(?:[)）]|[、,，]|[.．])\s*|[四]\s*[、,，.]\s*|4\s*\.)\s*)(?:办理步骤|处理步骤|执行步骤|流程步骤|操作步骤)(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*(?:(?:[4４]\s*(?:[)）]|[、,，]|[.．])\s*|[四]\s*[、,，.]\s*|4\s*\.)\s*)(?:办理步骤|处理步骤|执行步骤|流程步骤|操作步骤)\s*$/s,
+    ],
+  },
+  {
+    kind: "actionSteps",
+    friendly: true,
+    match: /^\s*可执行操作步骤(?:\s*[：:]|\s+$|\s+)/,
+    flexStrips: [
+      /^\s*可执行操作步骤\s*[：:]\s*(.*)$/s,
+      /^\s*可执行操作步骤\s+(.+)$/s,
+      /^\s*可执行操作步骤\s*$/s,
+    ],
+    strips: [/^\s*可执行操作步骤(\s*[：:]\s*|\s+)(.*)$/s, /^\s*可执行操作步骤\s*$/s],
+  },
+  {
+    kind: "actionSteps",
+    friendly: true,
+    match: /^\s*(?:办理步骤|处理步骤|执行步骤|流程步骤|操作步骤)(?:\s*[：:]|\s+$|\s+)/,
+    strips: [
+      /^\s*(?:办理步骤|处理步骤|执行步骤|流程步骤|操作步骤)(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*(?:办理步骤|处理步骤|执行步骤|流程步骤|操作步骤)\s*$/s,
+    ],
+  },
+  {
+    kind: "conclusion",
+    friendly: true,
+    match: new RegExp(`^\\s*${SEC_P1}一句话结论`),
+    flexStrips: [new RegExp(`^\\s*${SEC_P1}一句话结论\\s*(.*)$`, "s")],
+    strips: [
+      /^\s*(?:(?:[1１]\s*(?:[)）]|[、,，]|[.．])\s*|[一]\s*[、,，.]\s*|1\s*\.)\s*)一句话结论(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*(?:(?:[1１]\s*(?:[)）]|[、,，]|[.．])\s*|[一]\s*[、,，.]\s*|1\s*\.)\s*)一句话结论\s*$/s,
+    ],
+  },
+  {
+    kind: "conclusion",
+    friendly: true,
+    match: /^\s*一句话结论(?:\s*[：:]|\s+$|\s+)/,
+    flexStrips: [
+      /^\s*一句话结论\s*[：:]\s*(.*)$/s,
+      /^\s*一句话结论\s+(.+)$/s,
+      /^\s*一句话结论\s*$/s,
+    ],
+    strips: [/^\s*一句话结论(\s*[：:]\s*|\s+)(.*)$/s, /^\s*一句话结论\s*$/s],
+  },
+  {
+    kind: "conclusion",
+    friendly: true,
+    match: new RegExp(`^\\s*${SEC_P1}简短结论`),
+    flexStrips: [new RegExp(`^\\s*${SEC_P1}简短结论\\s*(.*)$`, "s")],
+    strips: [
+      /^\s*(?:(?:[1１]\s*(?:[)）]|[、,，]|[.．])\s*|[一]\s*[、,，.]\s*|1\s*\.)\s*)简短结论(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*(?:(?:[1１]\s*(?:[)）]|[、,，]|[.．])\s*|[一]\s*[、,，.]\s*|1\s*\.)\s*)简短结论\s*$/s,
+    ],
+  },
+  {
+    kind: "conclusion",
+    friendly: true,
+    match: /^\s*简短结论(?:\s*[：:]|\s+$|\s+)/,
+    flexStrips: [
+      /^\s*简短结论\s*[：:]\s*(.*)$/s,
+      /^\s*简短结论\s+(.+)$/s,
+      /^\s*简短结论\s*$/s,
+    ],
+    strips: [/^\s*简短结论(\s*[：:]\s*|\s+)(.*)$/s, /^\s*简短结论\s*$/s],
+  },
+  {
+    kind: "conclusion",
+    friendly: true,
+    match: new RegExp(`^\\s*${SEC_P1}核心结论`),
+    flexStrips: [new RegExp(`^\\s*${SEC_P1}核心结论\\s*(.*)$`, "s")],
+    strips: [
+      /^\s*(?:(?:[1１]\s*(?:[)）]|[、,，]|[.．])\s*|[一]\s*[、,，.]\s*|1\s*\.)\s*)核心结论(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*(?:(?:[1１]\s*(?:[)）]|[、,，]|[.．])\s*|[一]\s*[、,，.]\s*|1\s*\.)\s*)核心结论\s*$/s,
+    ],
+  },
+  {
+    kind: "conclusion",
+    friendly: true,
+    match: /^\s*核心结论(?:\s*[：:]|\s+$|\s+)/,
+    flexStrips: [
+      /^\s*核心结论\s*[：:]\s*(.*)$/s,
+      /^\s*核心结论\s+(.+)$/s,
+      /^\s*核心结论\s*$/s,
+    ],
+    strips: [/^\s*核心结论(\s*[：:]\s*|\s+)(.*)$/s, /^\s*核心结论\s*$/s],
+  },
+  {
+    kind: "conclusion",
+    friendly: true,
+    match: new RegExp(`^\\s*${SEC_P1}直接回答`),
+    flexStrips: [new RegExp(`^\\s*${SEC_P1}直接回答\\s*(.*)$`, "s")],
+    strips: [
+      /^\s*(?:(?:[1１]\s*(?:[)）]|[、,，]|[.．])\s*|[一]\s*[、,，.]\s*|1\s*\.)\s*)直接回答(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*(?:(?:[1１]\s*(?:[)）]|[、,，]|[.．])\s*|[一]\s*[、,，.]\s*|1\s*\.)\s*)直接回答\s*$/s,
+    ],
+  },
+  {
+    kind: "conclusion",
+    friendly: true,
+    match: /^\s*直接回答(?:\s*[：:]|\s+$|\s+)/,
+    flexStrips: [
+      /^\s*直接回答\s*[：:]\s*(.*)$/s,
+      /^\s*直接回答\s+(.+)$/s,
+      /^\s*直接回答\s*$/s,
+    ],
+    strips: [/^\s*直接回答(\s*[：:]\s*|\s+)(.*)$/s, /^\s*直接回答\s*$/s],
+  },
+  {
+    kind: "conclusion",
+    friendly: false,
+    match: new RegExp(`^\\s*${SEC_P1}结论(?![性书及编])`),
+    flexStrips: [new RegExp(`^\\s*${SEC_P1}结论(?![性书及编])\\s*(.*)$`, "s")],
+    strips: [
+      /^\s*(?:(?:[1１]\s*(?:[)）]|[、,，]|[.．])\s*|[一]\s*[、,，.]\s*|1\s*\.)\s*)结论(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*(?:(?:[1１]\s*(?:[)）]|[、,，]|[.．])\s*|[一]\s*[、,，.]\s*|1\s*\.)\s*)结论(?![性书及编])\s*(.*)$/s,
+      /^\s*(?:(?:[1１]\s*(?:[)）]|[、,，]|[.．])\s*|[一]\s*[、,，.]\s*|1\s*\.)\s*)结论\s*$/s,
+    ],
+  },
+  {
+    kind: "conclusion",
+    friendly: false,
+    match: /^\s*结论(?![性书及编])\s*$/,
+    strips: [/^\s*结论(?![性书及编])\s*$/s],
+  },
+  {
+    kind: "conclusion",
+    friendly: false,
+    match: /^\s*结论(?![性书及编])(?:\s*[：:]|\s+$|\s+)/,
+    flexStrips: [
+      /^\s*结论(?![性书及编])\s*[：:]\s*(.*)$/s,
+      /^\s*结论(?![性书及编])\s+(.+)$/s,
+      /^\s*结论(?![性书及编])\s*$/s,
+    ],
+    strips: [/^\s*结论(\s*[：:]\s*|\s+)(.*)$/s, /^\s*结论(?![性书及编])\s*$/s, /^\s*结论\s*$/s],
+  },
+  {
+    kind: "actionAdvice",
+    friendly: true,
+    match: new RegExp(`^\\s*${SEC_P2}你现在最该做`),
+    flexStrips: [new RegExp(`^\\s*${SEC_P2}你现在最该做\\s*(.*)$`, "s")],
+    strips: [
+      /^\s*(?:(?:[2２]\s*(?:[)）]|[、,，]|[.．])\s*|[二]\s*[、,，.]\s*|2\s*\.)\s*)你现在最该做(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*(?:(?:[2２]\s*(?:[)）]|[、,，]|[.．])\s*|[二]\s*[、,，.]\s*|2\s*\.)\s*)你现在最该做\s*$/s,
+    ],
+  },
+  {
+    kind: "actionAdvice",
+    friendly: true,
+    match: new RegExp(`^\\s*${SEC_P2}现在最该做`),
+    flexStrips: [new RegExp(`^\\s*${SEC_P2}现在最该做\\s*(.*)$`, "s")],
+    strips: [
+      /^\s*(?:(?:[2２]\s*(?:[)）]|[、,，]|[.．])\s*|[二]\s*[、,，.]\s*|2\s*\.)\s*)现在最该做(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*(?:(?:[2２]\s*(?:[)）]|[、,，]|[.．])\s*|[二]\s*[、,，.]\s*|2\s*\.)\s*)现在最该做\s*$/s,
+    ],
+  },
+  {
+    kind: "actionAdvice",
+    friendly: true,
+    match: /^\s*你现在最该做(?:\s*[：:]|\s+$|\s+)/,
+    flexStrips: [
+      /^\s*你现在最该做\s*[：:]\s*(.*)$/s,
+      /^\s*你现在最该做\s+(.+)$/s,
+      /^\s*你现在最该做\s*$/s,
+    ],
+    strips: [/^\s*你现在最该做(\s*[：:]\s*|\s+)(.*)$/s, /^\s*你现在最该做\s*$/s],
+  },
+  {
+    kind: "actionAdvice",
+    friendly: true,
+    match: /^\s*现在最该做(?:\s*[：:]|\s+$|\s+)/,
+    flexStrips: [
+      /^\s*现在最该做\s*[：:]\s*(.*)$/s,
+      /^\s*现在最该做\s+(.+)$/s,
+      /^\s*现在最该做\s*$/s,
+    ],
+    strips: [/^\s*现在最该做(\s*[：:]\s*|\s+)(.*)$/s, /^\s*现在最该做\s*$/s],
+  },
+  {
+    kind: "actionAdvice",
+    friendly: true,
+    match: /^\s*行动建议(?:\s*[：:]|\s+$|\s+)/,
+    strips: [/^\s*行动建议(\s*[：:]\s*|\s+)(.*)$/s, /^\s*行动建议\s*$/s],
+  },
+  {
+    kind: "actionAdvice",
+    friendly: true,
+    match: /^\s*下一步(?:\s*[：:]|\s+$|\s+)/,
+    strips: [/^\s*下一步(\s*[：:]\s*|\s+)(.*)$/s, /^\s*下一步\s*$/s],
+  },
+  {
+    kind: "actionAdvice",
+    friendly: true,
+    match: /^\s*你可以这样做(?:\s*[：:]|\s+$|\s+)/,
+    strips: [/^\s*你可以这样做(\s*[：:]\s*|\s+)(.*)$/s, /^\s*你可以这样做\s*$/s],
+  },
+  {
+    kind: "actionAdvice",
+    friendly: false,
+    match: /^\s*(?:(?:[4４]\s*[)）、.]|[四]\s*[、,，.]|4\s*\.)\s*)建议\b/,
+    strips: [
+      /^\s*(?:(?:[4４]\s*[)）、.]|[四]\s*[、,，.]|4\s*\.)\s*)建议(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*(?:(?:[4４]\s*[)）、.]|[四]\s*[、,，.]|4\s*\.)\s*)建议\s*$/s,
+    ],
+  },
+  {
+    kind: "actionAdvice",
+    friendly: false,
+    match: /^\s*(?:(?:[3３]\s*[)）、.]|[三]\s*[、,，.]|3\s*\.)\s*)建议\b/,
+    strips: [
+      /^\s*(?:(?:[3３]\s*[)）、.]|[三]\s*[、,，.]|3\s*\.)\s*)建议(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*(?:(?:[3３]\s*[)）、.]|[三]\s*[、,，.]|3\s*\.)\s*)建议\s*$/s,
+    ],
+  },
+  {
+    kind: "actionAdvice",
+    friendly: false,
+    match: /^\s*建议(?:\s*[：:]|\s+$|\s+)/,
+    strips: [/^\s*建议(\s*[：:]\s*|\s+)(.*)$/s, /^\s*建议\s*$/s],
+  },
+  {
+    kind: "risks",
+    friendly: true,
+    match: new RegExp(`^\\s*${SEC_P3}风险提示`),
+    flexStrips: [new RegExp(`^\\s*${SEC_P3}风险提示\\s*(.*)$`, "s")],
+    strips: [
+      /^\s*(?:(?:[3３]\s*(?:[)）]|[、,，]|[.．])\s*|[三]\s*[、,，.]\s*|3\s*\.)\s*)风险提示(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*(?:(?:[3３]\s*(?:[)）]|[、,，]|[.．])\s*|[三]\s*[、,，.]\s*|3\s*\.)\s*)风险提示\s*$/s,
+    ],
+  },
+  {
+    kind: "risks",
+    friendly: true,
+    match: /^\s*风险提示(?:\s*[：:]|\s+$|\s+)/,
+    flexStrips: [
+      /^\s*风险提示\s*[：:]\s*(.*)$/s,
+      /^\s*风险提示\s+(.+)$/s,
+      /^\s*风险提示\s*$/s,
+    ],
+    strips: [/^\s*风险提示(\s*[：:]\s*|\s+)(.*)$/s, /^\s*风险提示\s*$/s],
+  },
+  {
+    kind: "risks",
+    friendly: true,
+    match: /^\s*主要风险(?:\s*[：:]|\s+$|\s+)/,
+    strips: [/^\s*主要风险(\s*[：:]\s*|\s+)(.*)$/s, /^\s*主要风险\s*$/s],
+  },
+  {
+    kind: "risks",
+    friendly: true,
+    match: /^\s*注意风险(?:\s*[：:]|\s+$|\s+)/,
+    strips: [/^\s*注意风险(\s*[：:]\s*|\s+)(.*)$/s, /^\s*注意风险\s*$/s],
+  },
+  {
+    kind: "risks",
+    friendly: false,
+    match: /^\s*风险点(?:\s*[：:]|\s+$|\s+)/,
+    strips: [/^\s*风险点(\s*[：:]\s*|\s+)(.*)$/s, /^\s*风险点\s*$/s],
+  },
+  {
+    kind: "risks",
+    friendly: false,
+    match: /^\s*风险点\s*$/,
+    strips: [/^\s*风险点\s*$/s],
+  },
+  {
+    kind: "risks",
+    friendly: false,
+    match: new RegExp(`^\\s*${SEC_P3}风险点`),
+    flexStrips: [new RegExp(`^\\s*${SEC_P3}风险点\\s*(.*)$`, "s")],
+    strips: [
+      /^\s*(?:(?:[3３]\s*(?:[)）]|[、,，]|[.．])\s*|[三]\s*[、,，.]\s*|3\s*\.)\s*)风险点(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*(?:(?:[3３]\s*(?:[)）]|[、,，]|[.．])\s*|[三]\s*[、,，.]\s*|3\s*\.)\s*)风险点\s*$/s,
+    ],
+  },
+  {
+    kind: "risks",
+    friendly: false,
+    match: new RegExp(`^\\s*${SEC_P3}风险(?![点示])`),
+    flexStrips: [new RegExp(`^\\s*${SEC_P3}风险(?![点示])\\s*(.*)$`, "s")],
+    strips: [
+      /^\s*(?:(?:[3３]\s*(?:[)）]|[、,，]|[.．])\s*|[三]\s*[、,，.]\s*|3\s*\.)\s*)风险(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*(?:(?:[3３]\s*(?:[)）]|[、,，]|[.．])\s*|[三]\s*[、,，.]\s*|3\s*\.)\s*)风险\s*$/s,
+    ],
+  },
+  {
+    kind: "risks",
+    friendly: false,
+    match: /^\s*风险(?![点示])(?:\s*[：:]|\s+$|\s+)/,
+    strips: [/^\s*风险(\s*[：:]\s*|\s+)(.*)$/s, /^\s*风险\s*$/s],
+  },
+  {
+    kind: "basis",
+    friendly: true,
+    match: new RegExp(`^\\s*${SEC_P5}法律依据`),
+    flexStrips: [new RegExp(`^\\s*${SEC_P5}法律依据\\s*(.*)$`, "s")],
+    strips: [
+      /^\s*(?:(?:[5５]\s*(?:[)）]|[、,，]|[.．])\s*|[五]\s*[、,，.]\s*|5\s*\.)\s*)法律依据(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*(?:(?:[5５]\s*(?:[)）]|[、,，]|[.．])\s*|[五]\s*[、,，.]\s*|5\s*\.)\s*)法律依据\s*$/s,
+    ],
+  },
+  {
+    kind: "basis",
+    friendly: true,
+    match: /^\s*法律依据(?:\s*[：:]|\s+$|\s+)/,
+    flexStrips: [
+      /^\s*法律依据\s*[：:]\s*(.*)$/s,
+      /^\s*法律依据\s+(.+)$/s,
+      /^\s*法律依据\s*$/s,
+    ],
+    strips: [/^\s*法律依据(\s*[：:]\s*|\s+)(.*)$/s, /^\s*法律依据\s*$/s],
+  },
+  {
+    kind: "basis",
+    friendly: true,
+    match: /^\s*引用依据(?:\s*[：:]|\s+$|\s+)/,
+    flexStrips: [
+      /^\s*引用依据\s*[：:]\s*(.*)$/s,
+      /^\s*引用依据\s+(.+)$/s,
+      /^\s*引用依据\s*$/s,
+    ],
+    strips: [/^\s*引用依据(\s*[：:]\s*|\s+)(.*)$/s, /^\s*引用依据\s*$/s],
+  },
+  {
+    kind: "basis",
+    friendly: true,
+    match: /^\s*相关依据(?:\s*[：:]|\s+$|\s+)/,
+    flexStrips: [
+      /^\s*相关依据\s*[：:]\s*(.*)$/s,
+      /^\s*相关依据\s+(.+)$/s,
+      /^\s*相关依据\s*$/s,
+    ],
+    strips: [/^\s*相关依据(\s*[：:]\s*|\s+)(.*)$/s, /^\s*相关依据\s*$/s],
+  },
+  {
+    kind: "basis",
+    friendly: false,
+    match: /^\s*(?:(?:[2２]\s*[)）、.]|[二]\s*[、,，.]|2\s*\.)\s*)依据\b/,
+    strips: [
+      /^\s*(?:(?:[2２]\s*[)）、.]|[二]\s*[、,，.]|2\s*\.)\s*)依据(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*(?:(?:[2２]\s*[)）、.]|[二]\s*[、,，.]|2\s*\.)\s*)依据\s*$/s,
+    ],
+  },
+  {
+    kind: "basis",
+    friendly: false,
+    match: /^\s*依据\s*$/,
+    strips: [/^\s*依据\s*$/s],
+  },
+  {
+    kind: "basis",
+    friendly: false,
+    match: /^\s*依据(?:\s*[：:]|\s+$|\s+)/,
+    strips: [/^\s*依据(\s*[：:]\s*|\s+)(.*)$/s, /^\s*依据\s*$/s],
+  },
+];
+
+function matchSectionHeader(line: string): SectionHeaderRule | null {
   const t = line.trimStart();
   if (isCitationListLine(line)) return null;
-
-  if (
-    /^\s*(?:(?:[1１]\s*[)）、.]|[一]\s*[、,，.]|1\s*\.)\s*)结论\b/.test(t) ||
-    /^\s*结论(?![性书及编])(?:\s*[：:]|\s+$|\s+)/.test(t) ||
-    /^\s*结论\s*$/.test(t)
-  ) {
-    return "conclusion";
-  }
-  if (
-    /^\s*(?:(?:[2２]\s*[)）、.]|[二]\s*[、,，.]|2\s*\.)\s*)依据\b/.test(t) ||
-    /^\s*依据(?:\s*[：:]|\s+$|\s+)/.test(t)
-  ) {
-    return "basis";
-  }
-  if (
-    /^\s*(?:(?:[3３]\s*[)）、.]|[三]\s*[、,，.]|3\s*\.)\s*)风险点\b/.test(t) ||
-    /^\s*风险点(?:\s*[：:]|\s+$|\s+)/.test(t) ||
-    /^\s*风险点\s*$/.test(t) ||
-    /^\s*(?:(?:[3３]\s*[)）、.]|[三]\s*[、,，.]|3\s*\.)\s*)风险\b/.test(t) ||
-    /^\s*风险(?![点])(?:\s*[：:]|\s+$|\s+)/.test(t) ||
-    /^\s*风险\s*$/.test(t)
-  ) {
-    return "risk";
-  }
-  if (
-    /^\s*(?:(?:[4４]\s*[)）、.]|[四]\s*[、,，.]|4\s*\.)\s*)建议\b/.test(t) ||
-    /^\s*(?:(?:[3３]\s*[)）、.]|[三]\s*[、,，.]|3\s*\.)\s*)建议\b/.test(t) ||
-    /^\s*建议(?:\s*[：:]|\s+$|\s+)/.test(t)
-  ) {
-    return "suggestion";
+  for (const rule of SECTION_HEADER_RULES) {
+    if (rule.match.test(t)) return rule;
   }
   return null;
 }
 
-function stripSectionHeaderLine(line: string, kind: SectionKind): { rest: string; stripped: boolean } {
-  const patterns: Record<SectionKind, RegExp[]> = {
-    conclusion: [
-      /^\s*(?:(?:[1１]\s*[)）、.]|[一]\s*[、,，.]|1\s*\.)\s*)结论(\s*[：:]\s*|\s+)(.*)$/s,
-      /^\s*结论(\s*[：:]\s*|\s+)(.*)$/s,
-      /^\s*(?:(?:[1１]\s*[)）、.]|[一]\s*[、,，.]|1\s*\.)\s*)结论(?![性书及编])\s*(.*)$/s,
-      /^\s*(?:(?:[1１]\s*[)）、.]|[一]\s*[、,，.]|1\s*\.)\s*)结论\s*$/s,
-      /^\s*结论(?![性书及编])\s*$/s,
-      /^\s*结论\s*$/s,
-    ],
-    basis: [
-      /^\s*(?:(?:[2２]\s*[)）、.]|[二]\s*[、,，.]|2\s*\.)\s*)依据(\s*[：:]\s*|\s+)(.*)$/s,
-      /^\s*依据(\s*[：:]\s*|\s+)(.*)$/s,
-      /^\s*(?:(?:[2２]\s*[)）、.]|[二]\s*[、,，.]|2\s*\.)\s*)依据\s*$/s,
-      /^\s*依据\s*$/s,
-    ],
-    risk: [
-      /^\s*(?:(?:[3３]\s*[)）、.]|[三]\s*[、,，.]|3\s*\.)\s*)风险点(\s*[：:]\s*|\s+)(.*)$/s,
-      /^\s*风险点(\s*[：:]\s*|\s+)(.*)$/s,
-      /^\s*(?:(?:[3３]\s*[)）、.]|[三]\s*[、,，.]|3\s*\.)\s*)风险点\s*$/s,
-      /^\s*风险点\s*$/s,
-      /^\s*(?:(?:[3３]\s*[)）、.]|[三]\s*[、,，.]|3\s*\.)\s*)风险(\s*[：:]\s*|\s+)(.*)$/s,
-      /^\s*风险(\s*[：:]\s*|\s+)(.*)$/s,
-      /^\s*(?:(?:[3３]\s*[)）、.]|[三]\s*[、,，.]|3\s*\.)\s*)风险\s*$/s,
-      /^\s*风险\s*$/s,
-    ],
-    suggestion: [
-      /^\s*(?:(?:[4４]\s*[)）、.]|[四]\s*[、,，.]|4\s*\.)\s*)建议(\s*[：:]\s*|\s+)(.*)$/s,
-      /^\s*(?:(?:[3３]\s*[)）、.]|[三]\s*[、,，.]|3\s*\.)\s*)建议(\s*[：:]\s*|\s+)(.*)$/s,
-      /^\s*建议(\s*[：:]\s*|\s+)(.*)$/s,
-      /^\s*(?:(?:[4４]\s*[)）、.]|[四]\s*[、,，.]|4\s*\.)\s*)建议\s*$/s,
-      /^\s*(?:(?:[3３]\s*[)）、.]|[三]\s*[、,，.]|3\s*\.)\s*)建议\s*$/s,
-      /^\s*建议\s*$/s,
-    ],
-  };
-  for (const re of patterns[kind]) {
+function stripSectionHeaderLine(line: string, rule: SectionHeaderRule): { rest: string; stripped: boolean } {
+  const sequence = [...(rule.flexStrips ?? []), ...rule.strips];
+  for (const re of sequence) {
     const m = re.exec(line);
     if (!m) continue;
+    if (m.length <= 1) {
+      return { rest: "", stripped: true };
+    }
     const body = m[2] ?? m[1];
     if (typeof body === "string") {
       return { rest: body.trim(), stripped: true };
@@ -157,22 +497,40 @@ function stripSectionHeaderLine(line: string, kind: SectionKind): { rest: string
   return { rest: line, stripped: false };
 }
 
+function textHasAnySectionHeader(text: string): boolean {
+  for (const line of text.split(/\r?\n/)) {
+    if (matchSectionHeader(line)) return true;
+  }
+  return false;
+}
+
 /** 从一段文字中拆出后续小节（用于标题挤在同一行的情况） */
 function peelFollowingSection(
   content: string,
-  kind: "basis" | "risk" | "suggestion",
+  kind: "basis" | "risks" | "actionAdvice" | "actionSteps",
 ): { head: string; tail: string } {
   const patterns: Record<typeof kind, RegExp[]> = {
     basis: [
-      /(?<![0-9０-９])(?:(?:[2２]\s*[)）、.]|[二]\s*[、,，.]|2\s*\.)\s*)依据\s*[：:]?\s*/,
+      /(?<![0-9０-９])(?:(?:[5５]\s*(?:[)）]|[、,，]|[.．])\s*|[五]\s*[、,，.]\s*|5\s*\.)\s*)法律依据\s*[：:]?\s*/,
+      /(?<![0-9０-９])(?:(?:[2２]\s*(?:[)）]|[、,，]|[.．])\s*|[二]\s*[、,，.]\s*|2\s*\.)\s*)依据\s*[：:]?\s*/,
+      /(?<![0-9０-９])(?:(?:[2２]\s*(?:[)）]|[、,，]|[.．])\s*|[二]\s*[、,，.]\s*|2\s*\.)\s*)(?:引用依据|相关依据)\s*[：:]?\s*/,
     ],
-    risk: [
-      /(?<![0-9０-９])(?:(?:[3３]\s*[)）、.]|[三]\s*[、,，.]|3\s*\.)\s*)风险点\s*[：:]?\s*/,
-      /(?<![0-9０-９])(?:(?:[3３]\s*[)）、.]|[三]\s*[、,，.]|3\s*\.)\s*)风险\s*[：:]?\s*/,
+    risks: [
+      /(?<![0-9０-９])(?:(?:[3３]\s*(?:[)）]|[、,，]|[.．])\s*|[三]\s*[、,，.]\s*|3\s*\.)\s*)风险提示\s*[：:]?\s*/,
+      /(?<![0-9０-９])(?:(?:[3３]\s*(?:[)）]|[、,，]|[.．])\s*|[三]\s*[、,，.]\s*|3\s*\.)\s*)主要风险\s*[：:]?\s*/,
+      /(?<![0-9０-９])(?:(?:[3３]\s*(?:[)）]|[、,，]|[.．])\s*|[三]\s*[、,，.]\s*|3\s*\.)\s*)注意风险\s*[：:]?\s*/,
+      /(?<![0-9０-９])(?:(?:[3３]\s*(?:[)）]|[、,，]|[.．])\s*|[三]\s*[、,，.]\s*|3\s*\.)\s*)风险点\s*[：:]?\s*/,
+      /(?<![0-9０-９])(?:(?:[3３]\s*(?:[)）]|[、,，]|[.．])\s*|[三]\s*[、,，.]\s*|3\s*\.)\s*)风险(?![点示])\s*[：:]?\s*/,
     ],
-    suggestion: [
-      /(?<![0-9０-９])(?:(?:[4４]\s*[)）、.]|[四]\s*[、,，.]|4\s*\.)\s*)建议\s*[：:]?\s*/,
-      /(?<![0-9０-９])(?:(?:[3３]\s*[)）、.]|[三]\s*[、,，.]|3\s*\.)\s*)建议\s*[：:]?\s*/,
+    actionAdvice: [
+      /(?<![0-9０-９])(?:(?:[2２]\s*(?:[)）]|[、,，]|[.．])\s*|[二]\s*[、,，.]\s*|2\s*\.)\s*)你现在最该做\s*[：:]?\s*/,
+      /(?<![0-9０-９])(?:(?:[2２]\s*(?:[)）]|[、,，]|[.．])\s*|[二]\s*[、,，.]\s*|2\s*\.)\s*)现在最该做\s*[：:]?\s*/,
+      /(?<![0-9０-９])(?:(?:[4４]\s*(?:[)）]|[、,，]|[.．])\s*|[四]\s*[、,，.]\s*|4\s*\.)\s*)建议\s*[：:]?\s*/,
+      /(?<![0-9０-９])(?:(?:[3３]\s*(?:[)）]|[、,，]|[.．])\s*|[三]\s*[、,，.]\s*|3\s*\.)\s*)建议\s*[：:]?\s*/,
+    ],
+    actionSteps: [
+      /(?<![0-9０-９])(?:(?:[4４]\s*(?:[)）]|[、,，]|[.．])\s*|[四]\s*[、,，.]\s*|4\s*\.)\s*)可执行操作步骤\s*[：:]?\s*/,
+      /(?<![0-9０-９])(?:(?:[4４]\s*(?:[)）]|[、,，]|[.．])\s*|[四]\s*[、,，.]\s*|4\s*\.)\s*)(?:操作步骤|办理步骤|处理步骤|执行步骤|流程步骤)\s*[：:]?\s*/,
     ],
   };
   for (const rx of patterns[kind]) {
@@ -199,21 +557,26 @@ function heuristicAppendSuggestionFromBasisLines(basisLines: string[]): { basisL
   };
 }
 
-function fallbackFourPart(text: string): { conclusion: string; basis: string; risk: string; suggestion: string } {
+function fallbackFourPart(text: string): {
+  conclusion: string;
+  basis: string;
+  risks: string;
+  actionAdvice: string;
+} {
   const paras = text.split(/\n\s*\n+/).map((p) => p.trim()).filter(Boolean);
   if (paras.length >= 4) {
     return {
       conclusion: paras[0] ?? "",
       basis: paras[1] ?? "",
-      risk: paras[2] ?? "",
-      suggestion: paras.slice(3).join("\n\n"),
+      risks: paras[2] ?? "",
+      actionAdvice: paras.slice(3).join("\n\n"),
     };
   }
   if (paras.length === 3) {
-    return { conclusion: paras[0] ?? "", basis: paras[1] ?? "", risk: "", suggestion: paras[2] ?? "" };
+    return { conclusion: paras[0] ?? "", basis: paras[1] ?? "", risks: "", actionAdvice: paras[2] ?? "" };
   }
   if (paras.length === 2) {
-    return { conclusion: paras[0] ?? "", basis: paras[1] ?? "", risk: "", suggestion: "" };
+    return { conclusion: paras[0] ?? "", basis: paras[1] ?? "", risks: "", actionAdvice: "" };
   }
   const lines = text.split(/\r?\n/);
   const basisLike: string[] = [];
@@ -231,7 +594,7 @@ function fallbackFourPart(text: string): { conclusion: string; basis: string; ri
       continue;
     }
     const listCitation = /^[-*•]\s*\[[0-9０-９]+\]/.test(t);
-    const riskHead = /^(?:风险点|风险)\s*[：:]/.test(t);
+    const riskHead = /^(?:风险点|风险|风险提示)\s*[：:]/.test(t);
     const action = ACTION_LINE_RE.test(t);
     if (phase === "head" && listCitation) {
       phase = "basis";
@@ -250,8 +613,8 @@ function fallbackFourPart(text: string): { conclusion: string; basis: string; ri
   return {
     conclusion: head.join("\n").trim() || text.trim(),
     basis: basisLike.join("\n").trim(),
-    risk: riskLike.join("\n").trim(),
-    suggestion: suggestLike.join("\n").trim(),
+    risks: riskLike.join("\n").trim(),
+    actionAdvice: suggestLike.join("\n").trim(),
   };
 }
 
@@ -259,11 +622,30 @@ function mergeTail(prefix: string, existing: string): string {
   return [prefix, existing].filter(Boolean).join("\n\n").trim();
 }
 
+function applyPeelChain(
+  head: string,
+  kinds: Array<"basis" | "risks" | "actionAdvice" | "actionSteps">,
+  parts: { basis: string; risks: string; actionAdvice: string; actionSteps: string },
+): string {
+  let h = head;
+  for (const k of kinds) {
+    const p = peelFollowingSection(h, k);
+    if (p.tail) {
+      h = p.head.trim();
+      parts[k] = mergeTail(p.tail, parts[k]);
+    }
+  }
+  return h;
+}
+
 function normalizeAnswer(answer: string): QwenAnswer {
   const text = (answer || "").trim();
   if (!text) {
     return {
       conclusion: "未获取到回答。",
+      basis: PLACEHOLDER_BASIS,
+      risks: PLACEHOLDER_RISK,
+      actionAdvice: PLACEHOLDER_SUGGESTION,
       details: [
         { title: "依据", content: PLACEHOLDER_BASIS },
         { title: "风险点", content: PLACEHOLDER_RISK },
@@ -273,24 +655,27 @@ function normalizeAnswer(answer: string): QwenAnswer {
   }
 
   let mode: SectionKind = "conclusion";
+  let sawFriendlyDetailTitles = false;
   const buckets: Record<SectionKind, string[]> = {
     conclusion: [],
     basis: [],
-    risk: [],
-    suggestion: [],
+    risks: [],
+    actionAdvice: [],
+    actionSteps: [],
   };
 
   const lines = text.split(/\r?\n/);
   for (const line of lines) {
-    const kind = detectSectionHeaderLine(line);
-    if (kind) {
-      const { rest, stripped } = stripSectionHeaderLine(line, kind);
+    const rule = matchSectionHeader(line);
+    if (rule) {
+      const { rest, stripped } = stripSectionHeaderLine(line, rule);
       if (!stripped) {
         buckets[mode].push(line);
         continue;
       }
-      mode = kind;
-      if (rest) buckets[kind].push(rest);
+      if (rule.friendly || rule.kind === "actionSteps") sawFriendlyDetailTitles = true;
+      mode = rule.kind;
+      if (rest) buckets[rule.kind].push(rest);
       continue;
     }
     buckets[mode].push(line);
@@ -298,63 +683,36 @@ function normalizeAnswer(answer: string): QwenAnswer {
 
   let conclusion = buckets.conclusion.join("\n").trim();
   let basis = buckets.basis.join("\n").trim();
-  let risk = buckets.risk.join("\n").trim();
-  let suggestion = buckets.suggestion.join("\n").trim();
+  let risks = buckets.risks.join("\n").trim();
+  let actionAdvice = buckets.actionAdvice.join("\n").trim();
+  let actionSteps = buckets.actionSteps.join("\n").trim();
 
-  const peelBFromC = peelFollowingSection(conclusion, "basis");
-  if (peelBFromC.tail) {
-    conclusion = peelBFromC.head.trim();
-    basis = mergeTail(peelBFromC.tail, basis);
-  }
-  const peelRFromC = peelFollowingSection(conclusion, "risk");
-  if (peelRFromC.tail) {
-    conclusion = peelRFromC.head.trim();
-    risk = mergeTail(peelRFromC.tail, risk);
-  }
-  const peelSFromC = peelFollowingSection(conclusion, "suggestion");
-  if (peelSFromC.tail) {
-    conclusion = peelSFromC.head.trim();
-    suggestion = mergeTail(peelSFromC.tail, suggestion);
-  }
+  const parts = { basis, risks, actionAdvice, actionSteps };
+  conclusion = applyPeelChain(conclusion, ["basis", "risks", "actionAdvice", "actionSteps"], parts);
+  parts.basis = applyPeelChain(parts.basis, ["risks", "actionAdvice", "actionSteps"], parts);
+  parts.risks = applyPeelChain(parts.risks, ["actionAdvice", "actionSteps"], parts);
+  parts.actionAdvice = applyPeelChain(parts.actionAdvice, ["actionSteps"], parts);
+  basis = parts.basis;
+  risks = parts.risks;
+  actionAdvice = parts.actionAdvice;
+  actionSteps = parts.actionSteps;
 
-  const peelRFromB = peelFollowingSection(basis, "risk");
-  if (peelRFromB.tail) {
-    basis = peelRFromB.head.trim();
-    risk = mergeTail(peelRFromB.tail, risk);
-  }
-  const peelSFromB = peelFollowingSection(basis, "suggestion");
-  if (peelSFromB.tail) {
-    basis = peelSFromB.head.trim();
-    suggestion = mergeTail(peelSFromB.tail, suggestion);
-  }
-
-  const peelSFromR = peelFollowingSection(risk, "suggestion");
-  if (peelSFromR.tail) {
-    risk = peelSFromR.head.trim();
-    suggestion = mergeTail(peelSFromR.tail, suggestion);
-  }
-
-  if (!suggestion.trim()) {
+  if (!actionAdvice.trim()) {
     const bl = basis.split(/\r?\n/);
     const heur = heuristicAppendSuggestionFromBasisLines(bl);
     basis = heur.basisLines.join("\n").trim();
-    suggestion = mergeTail(heur.suggestionLines.join("\n").trim(), suggestion);
+    actionAdvice = mergeTail(heur.suggestionLines.join("\n").trim(), actionAdvice);
   }
 
-  const firstLine = text.split(/\r?\n/)[0] ?? "";
   const looksUnstructured =
-    !detectSectionHeaderLine(firstLine) &&
-    !/\r?\n\s*(?:(?:[2２]\s*[)）、.]|[二]\s*[、,，.]|2\s*\.)\s*)?依据\b/m.test(text) &&
-    !/\r?\n\s*(?:(?:[3３]\s*[)）、.]|[三]\s*[、,，.]|3\s*\.)\s*)?风险点?\b/m.test(text) &&
-    !/\r?\n\s*(?:(?:[4４]\s*[)）、.]|[四]\s*[、,，.]|4\s*\.)\s*)?建议\b/m.test(text) &&
-    !/\r?\n\s*建议\b/m.test(text);
+    !textHasAnySectionHeader(text) && !basis.trim() && !risks.trim() && !actionAdvice.trim() && !actionSteps.trim();
 
-  if (looksUnstructured && !basis && !risk && !suggestion) {
+  if (looksUnstructured) {
     const fb = fallbackFourPart(text);
     conclusion = fb.conclusion;
     basis = fb.basis;
-    risk = fb.risk;
-    suggestion = fb.suggestion;
+    risks = fb.risks;
+    actionAdvice = fb.actionAdvice;
   }
 
   if (!conclusion.trim()) {
@@ -367,19 +725,29 @@ function normalizeAnswer(answer: string): QwenAnswer {
   if (!basis.trim()) {
     basis = PLACEHOLDER_BASIS;
   }
-  if (!risk.trim()) {
-    risk = PLACEHOLDER_RISK;
+  if (!risks.trim()) {
+    risks = PLACEHOLDER_RISK;
   }
-  if (!suggestion.trim()) {
-    suggestion = PLACEHOLDER_SUGGESTION;
+  if (!actionAdvice.trim()) {
+    actionAdvice = PLACEHOLDER_SUGGESTION;
   }
+
+  const actionStepsRaw = actionSteps.trim() ? actionSteps.trim() : undefined;
+
+  const d0 = sawFriendlyDetailTitles ? "法律依据" : "依据";
+  const d1 = sawFriendlyDetailTitles ? "风险提示" : "风险点";
+  const d2 = sawFriendlyDetailTitles ? "你现在最该做" : "建议";
 
   return {
     conclusion: conclusion.trim() || text,
+    basis,
+    risks,
+    actionAdvice,
+    actionStepsRaw,
     details: [
-      { title: "依据", content: basis },
-      { title: "风险点", content: risk },
-      { title: "建议", content: suggestion },
+      { title: d0, content: basis },
+      { title: d1, content: risks },
+      { title: d2, content: actionAdvice },
     ],
   };
 }
@@ -471,6 +839,8 @@ export default function NewFeatureChatPage() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [sessionReady, setSessionReady] = useState(false);
+  const [sessionSidebarCollapsed, setSessionSidebarCollapsed] = useState(false);
+  const [mobileSessionsOpen, setMobileSessionsOpen] = useState(false);
   const activeSessionIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -538,6 +908,18 @@ export default function NewFeatureChatPage() {
     },
     [loading],
   );
+
+  const handleSelectSessionMobile = useCallback(
+    (sessionId: string) => {
+      handleSelectSession(sessionId);
+      setMobileSessionsOpen(false);
+    },
+    [handleSelectSession],
+  );
+
+  const toggleSessionSidebarCollapsed = useCallback(() => {
+    setSessionSidebarCollapsed((c) => !c);
+  }, []);
 
   const emptyHint = useMemo(() => "示例：竞业限制协议最多约定几年？", []);
 
@@ -759,150 +1141,224 @@ export default function NewFeatureChatPage() {
     }
   };
 
+  const chatContentMaxClass = sessionSidebarCollapsed ? "max-w-[1200px]" : "max-w-6xl";
+  const assistantColMaxClass = sessionSidebarCollapsed
+    ? "max-w-[min(100%,72rem)]"
+    : "max-w-[min(100%,52rem)]";
+  const userBubbleMaxClass = sessionSidebarCollapsed ? "max-w-[min(76%,44rem)]" : "max-w-[70%]";
+  const composerMaxClass = sessionSidebarCollapsed ? "max-w-[860px]" : "max-w-[760px]";
+
   return (
-    <div className="flex min-h-full min-w-0 flex-col overflow-x-hidden bg-[var(--app-bg)] text-[var(--app-text)]">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row md:items-stretch">
-        <aside className="hidden h-auto min-h-0 w-[280px] max-w-full shrink-0 border-[var(--app-border)] bg-[var(--app-surface)] md:flex md:border-r">
+    <>
+      {mobileSessionsOpen ? (
+        <div className="fixed inset-0 z-40 md:hidden">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/40"
+            aria-label="关闭历史对话"
+            onClick={() => setMobileSessionsOpen(false)}
+          />
+          <aside className="absolute left-0 top-0 flex h-full w-[min(280px,85vw)] min-w-0 flex-col border-r border-[var(--app-border)] bg-[var(--app-surface)] shadow-xl">
+            <div className="flex shrink-0 items-center justify-end border-b border-[var(--app-border)] px-2 py-2">
+              <button
+                type="button"
+                className="inline-flex size-9 items-center justify-center rounded-lg text-[var(--app-text-muted)] transition hover:bg-[var(--app-surface-muted)] hover:text-[var(--app-text)]"
+                aria-label="关闭"
+                onClick={() => setMobileSessionsOpen(false)}
+              >
+                <X className="size-4" aria-hidden />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <ChatSessionSidebar
+                sessions={sessions}
+                activeSessionId={activeSessionId}
+                loading={loading}
+                onNewSession={handleNewSession}
+                onSelectSession={handleSelectSessionMobile}
+                collapsed={false}
+                onToggleCollapsed={() => setMobileSessionsOpen(false)}
+                showCollapseToggle={false}
+              />
+            </div>
+          </aside>
+        </div>
+      ) : null}
+
+      <div className="flex h-full min-h-0 min-w-0 w-full overflow-hidden bg-[var(--app-bg)] text-[var(--app-text)]">
+        <aside
+          className={`hidden h-full min-h-0 shrink-0 overflow-hidden border-r border-[var(--app-border)] bg-[var(--app-surface)] transition-[width] duration-200 ease-out md:flex ${
+            sessionSidebarCollapsed ? "w-16" : "w-[280px]"
+          }`}
+        >
           <ChatSessionSidebar
             sessions={sessions}
             activeSessionId={activeSessionId}
             loading={loading}
             onNewSession={handleNewSession}
             onSelectSession={handleSelectSession}
+            collapsed={sessionSidebarCollapsed}
+            onToggleCollapsed={toggleSessionSidebarCollapsed}
           />
         </aside>
 
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--app-border)] bg-[var(--app-surface)]/95 px-3 py-2 md:hidden">
-            <span className="text-sm font-semibold text-[var(--app-text)]">对话</span>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => setMobileSessionsOpen(true)}
+              className="shrink-0 rounded-xl border border-[var(--app-border)] bg-white/90 px-3 py-2 text-xs font-medium text-[var(--app-text)] shadow-[var(--app-shadow-sm)] transition hover:bg-[var(--app-surface-muted)] disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              历史
+            </button>
+            <span className="min-w-0 flex-1 text-center text-sm font-semibold text-[var(--app-text)]">对话</span>
             <button
               type="button"
               disabled={loading || !sessionReady}
               onClick={handleNewSession}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-br from-[var(--app-primary)] to-[var(--app-primary-strong)] px-3 py-2 text-xs font-medium text-white shadow-[var(--app-shadow-sm)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-45"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-gradient-to-br from-[var(--app-primary)] to-[var(--app-primary-strong)] px-3 py-2 text-xs font-medium text-white shadow-[var(--app-shadow-sm)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-45"
             >
               <MessageSquarePlus className="size-3.5 shrink-0" aria-hidden />
               新对话
             </button>
           </div>
 
-      <div className="mx-auto flex w-full max-w-6xl min-w-0 items-center justify-between gap-4 px-5 py-6 md:px-8">
-        <div className="min-w-0">
-          <h1 className="text-lg font-semibold tracking-tight text-[var(--app-text)]">
-            Qwen + 阿里云知识库
-          </h1>
-          <p className="mt-1 text-xs text-[var(--app-text-muted)]">每次提问先检索知识库，再由 Qwen 生成答案</p>
-        </div>
-        {lastMeta ? (
-          <div className="shrink-0 rounded-full border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-1.5 text-xs text-[var(--app-text-muted)] shadow-[var(--app-shadow-sm)]">
-            模型：{lastMeta.model} · 检索片段：{lastMeta.retrievedCount}
-          </div>
-        ) : null}
-      </div>
-
-      <div className="mx-auto flex w-full max-w-6xl min-w-0 flex-1 flex-col gap-4 px-5 pb-44 md:px-8">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)]/90 p-5 shadow-[var(--app-shadow-sm)] backdrop-blur-sm">
-          <div className="min-h-0 min-w-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden scroll-pb-32 pb-36">
-          {messages.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-[var(--app-border)] bg-[var(--app-surface-muted)] p-4 text-sm text-[var(--app-text-muted)]">
-              {emptyHint}
-            </div>
-          ) : null}
-          {messages.map((m) => {
-            const assistantWithCard = m.role === "assistant" && m.answerCard;
-            const answerCard = m.answerCard;
-            return (
-            <div key={m.id} className={`flex min-w-0 items-start gap-3 ${m.role === "user" ? "justify-end" : ""}`}>
-              {m.role === "assistant" ? (
-                <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[var(--app-primary-soft)] text-[var(--app-primary)]">
-                  <Bot className="size-4" />
-                </div>
-              ) : null}
-              <div
-                className={
-                  m.role === "user"
-                    ? "max-w-[70%] min-w-0 rounded-[20px] bg-gradient-to-br from-[var(--app-primary)] to-[var(--app-primary-strong)] px-4 py-3 text-sm font-normal leading-7 text-white shadow-[var(--app-shadow-sm)]"
-                    : assistantWithCard
-                      ? "min-w-0 w-full max-w-[min(100%,48rem)] flex-1 space-y-3 text-[var(--app-text)]"
-                      : "min-w-0 max-w-[min(100%,48rem)] flex-1 rounded-[20px] border border-[var(--app-border)] bg-white/95 px-4 py-3 text-sm leading-7 text-[var(--app-text)] shadow-[var(--app-shadow-sm)]"
-                }
-              >
-                {assistantWithCard && answerCard ? (
-                  <div className="space-y-3">
-                    {m.processEvents && m.processEvents.length > 0 ? (
-                      <ProcessTimeline events={m.processEvents} />
-                    ) : null}
-                    <QwenKbAnswerCard
-                      answer={answerCard.answer}
-                      sources={answerCard.sources}
-                      question={answerCard.question}
-                      modelName={answerCard.modelName}
-                      onRegenerate={() => void send(answerCard.question || lastQuestion)}
-                      onCopy={() => {
-                        // reserved for analytics hook
-                      }}
-                      onFeedback={() => {
-                        // reserved for feedback API hook
-                      }}
-                    />
-                  </div>
-                ) : (
-                  m.content
-                )}
-              </div>
-              {m.role === "user" ? (
-                <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[var(--app-primary-soft)] text-[var(--app-primary)]">
-                  <User className="size-4" />
-                </div>
-              ) : null}
-            </div>
-            );
-          })}
-          {loading ? (
-            <div className="space-y-2 rounded-[20px] border border-[var(--app-border)] bg-white/85 p-3 shadow-[var(--app-shadow-sm)] backdrop-blur-sm">
-              {streamingEvents.length === 0 ? (
-                <p className="text-xs text-[var(--app-text-subtle)]">正在连接流式服务…</p>
-              ) : null}
-              <ProcessTimeline events={streamingEvents} />
-              {answerGenerationLive ? (
-                <StreamingAnswerDraft
-                  text={streamingAnswerDraft}
-                  pending={!streamingAnswerDraft}
-                />
-              ) : null}
-            </div>
-          ) : null}
-          </div>
-        </div>
-      </div>
-        </div>
-      </div>
-
-      <div className="fixed bottom-0 left-14 right-0 z-10 border-t border-[var(--app-border)]/70 bg-gradient-to-t from-[var(--app-surface)] via-[var(--app-surface)]/95 to-[var(--app-bg)]/35 pt-10 shadow-[0_-12px_40px_-16px_rgba(16,24,40,0.08)] backdrop-blur-[10px]">
-        <div className="mx-auto flex w-full max-w-6xl min-w-0 items-end gap-3 px-5 pb-5 pt-0 md:px-8">
-          <textarea
-            className="min-h-12 max-h-48 min-w-0 flex-1 resize-y rounded-[20px] border border-[var(--app-border)] bg-white p-3.5 text-sm text-[var(--app-text)] shadow-[var(--app-shadow-sm)] outline-none transition-[box-shadow,border-color] focus:border-[var(--app-primary)] focus:ring-2 focus:ring-[var(--app-primary)]/20"
-            placeholder="输入问题，回车发送（Shift+Enter 换行）"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void send();
-              }
-            }}
-          />
-          <button
-            type="button"
-            disabled={loading || !input.trim() || !sessionReady}
-            onClick={() => void send()}
-            className="inline-flex h-12 min-w-[5.5rem] shrink-0 items-center justify-center gap-2 rounded-[20px] bg-gradient-to-br from-[var(--app-primary)] to-[var(--app-primary-strong)] px-4 text-sm font-medium text-white shadow-[var(--app-shadow-sm)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-45"
+          <div
+            className={cn(
+              "mx-auto flex w-full shrink-0 items-center justify-between gap-4 px-5 py-4 md:px-8",
+              chatContentMaxClass,
+            )}
           >
-            {loading ? <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden /> : <Send className="size-4 shrink-0" aria-hidden />}
-            {loading ? "发送中" : "发送"}
-          </button>
+            <div className="min-w-0">
+              <h1 className="text-lg font-semibold tracking-tight text-[var(--app-text)]">
+                Qwen + 阿里云知识库
+              </h1>
+              <p className="mt-1 text-xs text-[var(--app-text-muted)]">每次提问先检索知识库，再由 Qwen 生成答案</p>
+            </div>
+            {lastMeta ? (
+              <div className="shrink-0 rounded-full border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-1.5 text-xs text-[var(--app-text-muted)] shadow-[var(--app-shadow-sm)]">
+                模型：{lastMeta.model} · 检索片段：{lastMeta.retrievedCount}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto scroll-pb-4">
+            <div className={cn("mx-auto w-full px-5 pb-4 pt-1 md:px-8", chatContentMaxClass)}>
+              <div className="space-y-4 rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)]/90 p-5 shadow-[var(--app-shadow-sm)] backdrop-blur-sm">
+                {messages.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-[var(--app-border)] bg-[var(--app-surface-muted)] p-4 text-sm text-[var(--app-text-muted)]">
+                    {emptyHint}
+                  </div>
+                ) : null}
+                {messages.map((m) => {
+                  const assistantWithCard = m.role === "assistant" && m.answerCard;
+                  const answerCard = m.answerCard;
+                  return (
+                    <div
+                      key={m.id}
+                      className={`flex min-w-0 items-start gap-3 ${m.role === "user" ? "justify-end" : ""}`}
+                    >
+                      {m.role === "assistant" ? (
+                        <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[var(--app-primary-soft)] text-[var(--app-primary)]">
+                          <Bot className="size-4" />
+                        </div>
+                      ) : null}
+                      <div
+                        className={cn(
+                          m.role === "user"
+                            ? "min-w-0 rounded-[20px] bg-gradient-to-br from-[var(--app-primary)] to-[var(--app-primary-strong)] px-4 py-3 text-sm font-normal leading-7 text-white shadow-[var(--app-shadow-sm)]"
+                            : assistantWithCard
+                              ? "min-w-0 w-full flex-1 space-y-3 text-[var(--app-text)]"
+                              : "min-w-0 flex-1 rounded-[20px] border border-[var(--app-border)] bg-white/95 px-4 py-3 text-sm leading-7 text-[var(--app-text)] shadow-[var(--app-shadow-sm)]",
+                          m.role === "user" ? userBubbleMaxClass : assistantColMaxClass,
+                        )}
+                      >
+                        {assistantWithCard && answerCard ? (
+                          <div className="space-y-3">
+                            {m.processEvents && m.processEvents.length > 0 ? (
+                              <ProcessTimeline events={m.processEvents} />
+                            ) : null}
+                            <QwenKbAnswerCard
+                              answer={answerCard.answer}
+                              sources={answerCard.sources}
+                              question={answerCard.question}
+                              modelName={answerCard.modelName}
+                              onRegenerate={() => void send(answerCard.question || lastQuestion)}
+                              onCopy={() => {
+                                // reserved for analytics hook
+                              }}
+                              onFeedback={() => {
+                                // reserved for feedback API hook
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          m.content
+                        )}
+                      </div>
+                      {m.role === "user" ? (
+                        <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[var(--app-primary-soft)] text-[var(--app-primary)]">
+                          <User className="size-4" />
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+                {loading ? (
+                  <div className="space-y-2 rounded-[20px] border border-[var(--app-border)] bg-white/85 p-3 shadow-[var(--app-shadow-sm)] backdrop-blur-sm">
+                    {streamingEvents.length === 0 ? (
+                      <p className="text-xs text-[var(--app-text-subtle)]">正在连接流式服务…</p>
+                    ) : null}
+                    <ProcessTimeline events={streamingEvents} />
+                    {answerGenerationLive ? (
+                      <StreamingAnswerDraft
+                        text={streamingAnswerDraft}
+                        pending={!streamingAnswerDraft}
+                      />
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+
+          <div className="shrink-0 bg-transparent px-3 pt-2 pb-5 md:px-4">
+            <div
+              className={cn(
+                "mx-auto flex w-full min-w-0 items-end gap-2 rounded-[28px] border border-[var(--app-border)] bg-white p-2.5 shadow-[0_12px_40px_-12px_rgba(16,24,40,0.14)] dark:bg-[var(--app-surface)]",
+                composerMaxClass,
+              )}
+            >
+              <textarea
+                className="min-h-12 max-h-48 min-w-0 flex-1 resize-y rounded-2xl border-0 bg-transparent px-2.5 py-2 text-sm leading-relaxed text-[var(--app-text)] placeholder:text-[var(--app-text-muted)] outline-none focus:outline-none focus:ring-0"
+                placeholder="输入问题，回车发送（Shift+Enter 换行）"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void send();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                disabled={loading || !input.trim() || !sessionReady}
+                onClick={() => void send()}
+                className="inline-flex h-10 min-w-[5.25rem] shrink-0 items-center justify-center gap-1.5 rounded-full bg-gradient-to-br from-[var(--app-primary)] to-[var(--app-primary-strong)] px-3.5 text-sm font-medium text-white shadow-[var(--app-shadow-sm)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                {loading ? (
+                  <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden />
+                ) : (
+                  <Send className="size-4 shrink-0" aria-hidden />
+                )}
+                {loading ? "发送中" : "发送"}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

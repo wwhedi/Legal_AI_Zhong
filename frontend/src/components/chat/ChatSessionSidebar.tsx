@@ -1,6 +1,6 @@
 "use client";
 
-import { MessageSquarePlus } from "lucide-react";
+import { ChevronLeft, ChevronRight, MessageSquarePlus } from "lucide-react";
 
 import type { ChatSession } from "@/types";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,10 @@ export type ChatSessionSidebarProps = {
   loading?: boolean;
   onNewSession: () => void;
   onSelectSession: (sessionId: string) => void;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
+  /** When false, hide the desktop collapse chevron (e.g. mobile drawer). Default true. */
+  showCollapseToggle?: boolean;
 };
 
 function formatSessionUpdatedAt(iso: string): string {
@@ -42,11 +46,52 @@ export function ChatSessionSidebar({
   loading = false,
   onNewSession,
   onSelectSession,
+  collapsed,
+  onToggleCollapsed,
+  showCollapseToggle = true,
 }: ChatSessionSidebarProps) {
+  if (collapsed) {
+    return (
+      <div className="flex h-full min-h-0 w-full min-w-0 flex-col items-stretch border-0 border-[var(--app-border)] bg-[var(--app-surface)]/95">
+        <div className="flex shrink-0 flex-col items-center gap-2 border-b border-[var(--app-border)] px-2 py-3">
+          <button
+            type="button"
+            onClick={onToggleCollapsed}
+            className="inline-flex size-9 items-center justify-center rounded-xl border border-transparent text-[var(--app-text-muted)] transition hover:border-[var(--app-border)] hover:bg-[var(--app-surface-muted)] hover:text-[var(--app-text)]"
+            aria-label="展开会话列表"
+          >
+            <ChevronRight className="size-4 shrink-0" aria-hidden />
+          </button>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={onNewSession}
+            className="inline-flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--app-primary)] to-[var(--app-primary-strong)] text-white shadow-[var(--app-shadow-sm)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-45"
+            aria-label="新对话"
+          >
+            <MessageSquarePlus className="size-4 shrink-0" aria-hidden />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col border-0 border-[var(--app-border)] bg-[var(--app-surface)]/95">
       <div className="shrink-0 space-y-3 border-b border-[var(--app-border)] p-3">
-        <div className="text-sm font-semibold text-[var(--app-text)]">对话</div>
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-sm font-semibold text-[var(--app-text)]">对话</div>
+          {showCollapseToggle ? (
+            <button
+              type="button"
+              onClick={onToggleCollapsed}
+              className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-[var(--app-text-muted)] transition hover:bg-[var(--app-surface-muted)] hover:text-[var(--app-text)]"
+              aria-label="收起会话列表"
+            >
+              <ChevronLeft className="size-4" aria-hidden />
+            </button>
+          ) : null}
+        </div>
         <button
           type="button"
           disabled={loading}
