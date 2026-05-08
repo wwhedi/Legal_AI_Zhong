@@ -5,7 +5,7 @@ import logging
 import os
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -47,8 +47,14 @@ _dbg_log(
 router = APIRouter(prefix="/new-rag", tags=["new-rag"])
 
 
+class ConversationMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+
 class NewRagAskRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=4000)
+    conversation_history: Optional[List[ConversationMessage]] = Field(default=None)
 
 
 class NewRagAskResponse(BaseModel):
@@ -63,7 +69,7 @@ class NewRagAskResponse(BaseModel):
 async def ask_new_rag(req: NewRagAskRequest) -> NewRagAskResponse:
     svc = QwenKBRagService()
     try:
-        result = await svc.ask(req.question)
+        result = await svc.ask(req.question, req.conversation_history or [])
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -84,7 +90,7 @@ async def ask_new_rag_stream(req: NewRagAskRequest) -> StreamingResponse:
 
     async def ndjson_body():
         try:
-            async for event in svc.ask_events(req.question):
+            async for event in svc.ask_events(req.question, req.conversation_history or []):
                 yield json.dumps(event, ensure_ascii=False) + "\n"
         except ValueError as exc:
             err = {

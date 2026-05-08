@@ -9,9 +9,13 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
-import { Check } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 
-import { ActionStepsTable, parseActionStepsTable } from "@/components/chat/ActionStepsTable";
+import {
+  ActionStepsTable,
+  parseActionStepsTable,
+  type ParsedActionStepsTable,
+} from "@/components/chat/ActionStepsTable";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { QwenKbSource } from "@/types";
 import { cn } from "@/lib/utils";
@@ -36,6 +40,267 @@ export type QwenAnswer = {
 export const PLACEHOLDER_BASIS = "暂无明确法律依据摘要，请查看引用法条。";
 export const PLACEHOLDER_RISK = "暂无明确风险提示。";
 export const PLACEHOLDER_SUGGESTION = "暂无明确行动建议。";
+
+/** 显示层：将正文里残留的小节标题「风险提示」归一为「需要注意」 */
+function sanitizeRiskHeadingLabels(text: string): string {
+  const t = text.trim();
+  if (!t || t === PLACEHOLDER_RISK) return text;
+  return text.replace(/^(\s*)风险提示(\s*[：:]|\s*$)/gm, "$1需要注意$2");
+}
+
+/** 是否为单独成行的小节标题（误留在结论/行动/列表中的「3) 需要注意」等） */
+function isStandaloneNoticeHeadingLine(line: string): boolean {
+  const s = line.trim();
+  if (!s) return false;
+  if (/^需要注意\s*[：:]?\s*$/.test(s)) return true;
+  if (/^风险提示\s*[：:]?\s*$/.test(s)) return true;
+  if (/^三[、.,．]\s*需要注意\s*[：:]?\s*$/.test(s)) return true;
+  if (/^三[、.,．]\s*风险提示\s*[：:]?\s*$/.test(s)) return true;
+  if (/^3\s+需要注意\s*[：:]?\s*$/.test(s)) return true;
+  if (/^3\s+风险提示\s*[：:]?\s*$/.test(s)) return true;
+  return /^(?:(?:[3３]\s*(?:[)）]|[、,，]|[.．])\s*|[三]\s*[、,，.]\s*|3\s*\.)\s*)(需要注意|风险提示)(\s*[：:]|\s*)?$/.test(s);
+}
+
+/** 从任意正文中剔除误混入的「需要注意」标题行，避免与下方独立 section 重复 */
+function stripLeakedNoticeHeadingLines(text: string): string {
+  const t = text.trim();
+  if (!t) return text;
+  return text
+    .split(/\r?\n/)
+    .filter((ln) => !isStandaloneNoticeHeadingLine(ln))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function isPlaceholderRiskContent(raw: string): boolean {
+  const t = raw.trim();
+  if (!t) return true;
+  if (t === PLACEHOLDER_RISK) return true;
+  return /^暂无明确(?:风险提示|需要注意)/.test(t);
+}
+
+/** 去掉块内误混入的标题行后再判断是否有有效条目 */
+function normalizeRiskBlocksForDisplay(blocks: string[]): string[] {
+  const out: string[] = [];
+  for (const block of blocks) {
+    const trimmed = block.trim();
+    if (!trimmed) continue;
+    const lines = trimmed.split(/\r?\n/).filter((ln) => !isStandaloneNoticeHeadingLine(ln.trim()));
+    const cleaned = lines.join("\n").trim();
+    if (!cleaned) continue;
+    out.push(cleaned);
+  }
+  return out;
+}
+
+/** 「需要注意」排序：依据不足 / 知识库边界类固定排在最后（与警示符号条目一致） */
+const RISK_BOUNDARY_SORT_PHRASES = [
+  "当前知识库未提供",
+  "当前知识库未检索到",
+  "无法直接判断",
+  "需结合个案证据",
+  "仍需补充事实",
+  "需要进一步核实",
+  "当前知识库依据不足",
+] as const;
+
+function isRiskBoundarySortCategory(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  return RISK_BOUNDARY_SORT_PHRASES.some((p) => t.includes(p));
+}
+
+function sortRiskBlocksBoundaryLast(blocks: string[]): string[] {
+  const normal: string[] = [];
+  const boundary: string[] = [];
+  for (const b of blocks) {
+    const body = peelFirstLineListPrefix(b).body;
+    if (isRiskBoundarySortCategory(body)) boundary.push(b);
+    else normal.push(b);
+  }
+  return [...normal, ...boundary];
+}
+
+const KNOWLEDGE_LEAD_CLAUSES = [
+  "当前知识库未提供",
+  "当前知识库未检索到",
+  "当前知识库依据不足",
+  "当前知识库检索结果不足",
+] as const;
+
+/** 将「当前知识库未提供…」等_clause 尽量前置，便于一眼看到依据边界 */
+function promoteKnowledgeBoundaryClause(text: string): string {
+  const s = text.trim();
+  if (!s) return text;
+  let earliest = -1;
+  for (const p of KNOWLEDGE_LEAD_CLAUSES) {
+    const i = s.indexOf(p);
+    if (i !== -1 && (earliest === -1 || i < earliest)) {
+      earliest = i;
+    }
+  }
+  if (earliest <= 0) return text;
+  const fromKw = s.slice(earliest);
+  let end = fromKw.length;
+  for (const sep of ["。", "；", "\n"] as const) {
+    const j = fromKw.indexOf(sep);
+    if (j !== -1) end = Math.min(end, j + sep.length);
+  }
+  const clause = fromKw.slice(0, end).trim();
+  const before = s.slice(0, earliest).replace(/[，,、]\s*$/u, "").trim();
+  const after = fromKw.slice(end).trim();
+  const rest = [before, after].filter(Boolean).join("，").replace(/^，+|，+$/gu, "").trim();
+  if (!rest) return clause;
+  return `${clause}；${rest}`;
+}
+
+/** 若未改写句序，则高亮从首个边界关键词到句末（。；或换行）的片段 */
+function extractBoundaryHighlightSpan(text: string): { before: string; hit: string; after: string } | null {
+  const s = text.trim();
+  if (!s) return null;
+  let idx = -1;
+  for (const p of RISK_BOUNDARY_SORT_PHRASES) {
+    const i = s.indexOf(p);
+    if (i !== -1 && (idx === -1 || i < idx)) {
+      idx = i;
+    }
+  }
+  if (idx < 0) return null;
+  const from = s.slice(idx);
+  let endRel = from.length;
+  for (const sep of ["。", "；", "\n"] as const) {
+    const j = from.indexOf(sep);
+    if (j !== -1) endRel = Math.min(endRel, j + sep.length);
+  }
+  const hit = from.slice(0, endRel).trim();
+  if (!hit) return null;
+  const before = s.slice(0, idx);
+  const after = from.slice(endRel);
+  return { before, hit, after };
+}
+
+function renderNoticeItemBody(body: string, sourceById: Map<number, QwenKbSource>): ReactNode {
+  const trimmed = body.trim();
+  if (!trimmed) return null;
+  const promoted = promoteKnowledgeBoundaryClause(trimmed);
+  const display = promoted.trim();
+  if (display !== trimmed && display.length > 0) {
+    return renderTextWithCitations(display, sourceById);
+  }
+  const span = extractBoundaryHighlightSpan(display);
+  if (span && span.hit.length > 0) {
+    return (
+      <>
+        {span.before ? renderTextWithCitations(span.before, sourceById) : null}
+        <span className="font-semibold text-[var(--app-text)]">
+          {renderTextWithCitations(span.hit, sourceById)}
+        </span>
+        {span.after ? renderTextWithCitations(span.after, sourceById) : null}
+      </>
+    );
+  }
+  return renderTextWithCitations(display, sourceById);
+}
+
+function normalizeLooseCompare(s: string): string {
+  return s.replace(/\[\d+\]/g, "").replace(/\s+/g, "");
+}
+
+function stepsRawLooksLikeProcessFlow(raw: string): boolean {
+  const t = raw.replace(/\s+/g, "");
+  const keys = [
+    "流程",
+    "办理",
+    "申请",
+    "提交",
+    "法院",
+    "仲裁",
+    "受理",
+    "审查",
+    "期限",
+    "材料",
+    "立案",
+    "起诉",
+    "上诉",
+    "执行",
+    "公证",
+    "调解",
+    "听证",
+    "答辩",
+    "举证",
+    "诉讼时效",
+  ];
+  return keys.some((k) => t.includes(k));
+}
+
+function tableHasConcreteTimeLimit(rows: { time: string }[]): boolean {
+  return rows.some((r) => {
+    const t = r.time.trim();
+    if (!t) return false;
+    return !t.includes("未提供明确时限");
+  });
+}
+
+function isGenericEvidenceOnlyTable(parsed: ParsedActionStepsTable): boolean {
+  const blob = parsed.rows.map((r) => `${r.step}${r.operation}`).join("");
+  const genericHits = ["保存", "核查", "整理", "证据", "备份", "截图", "复印", "核实"].filter((k) =>
+    blob.includes(k),
+  ).length;
+  return genericHits >= 2 && !stepsRawLooksLikeProcessFlow(blob);
+}
+
+function actionStepsRedundantWithAdvice(
+  stepsRaw: string,
+  adviceRaw: string,
+  parsed: ParsedActionStepsTable | null,
+): boolean {
+  const adv = normalizeLooseCompare(adviceRaw);
+  if (adv.length < 12) return false;
+  if (parsed && parsed.rows.length > 0) {
+    let hits = 0;
+    for (const r of parsed.rows) {
+      const op = normalizeLooseCompare(r.operation);
+      if (op.length < 8) continue;
+      const probe = op.slice(0, Math.min(28, op.length));
+      if (adv.includes(probe)) hits++;
+    }
+    if (parsed.rows.length >= 2 && hits >= Math.ceil(parsed.rows.length * 0.85)) return true;
+    if (parsed.rows.length === 1 && hits === 1) return true;
+  }
+  const sn = normalizeLooseCompare(stepsRaw);
+  if (sn.length > 35 && adv.includes(sn.slice(0, Math.min(48, sn.length)))) return true;
+  return false;
+}
+
+function shouldShowActionStepsSection(
+  stepsRaw: string,
+  adviceRaw: string,
+  parsed: ParsedActionStepsTable | null,
+): boolean {
+  const raw = stepsRaw.trim();
+  if (!raw) return false;
+  const flowRaw = stepsRawLooksLikeProcessFlow(raw);
+
+  if (parsed && parsed.rows.length > 0) {
+    const rows = parsed.rows;
+    const concreteTime = tableHasConcreteTimeLimit(rows);
+    const flowTable = rows.some((r) => stepsRawLooksLikeProcessFlow(`${r.step}${r.operation}${r.time}`));
+    const allTimePlaceholder = rows.every((r) => {
+      const t = r.time.trim();
+      return !t || t.includes("未提供明确时限");
+    });
+    const signal = concreteTime || flowTable || flowRaw;
+    if (!signal) return false;
+    if (allTimePlaceholder && !flowTable && !flowRaw && isGenericEvidenceOnlyTable(parsed)) return false;
+    if (actionStepsRedundantWithAdvice(raw, adviceRaw, parsed)) return false;
+    return true;
+  }
+
+  if (!flowRaw) return false;
+  if (actionStepsRedundantWithAdvice(raw, adviceRaw, null)) return false;
+  return true;
+}
 
 export type { QwenKbSource };
 
@@ -117,28 +382,22 @@ function KnowledgeSourcesBlock({ sources }: { sources: QwenKbSource[] }) {
 
   if (sources.length === 0) {
     return (
-      <div className="rounded-[12px] border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-[11px] text-[var(--app-text-muted)]">
+      <div className="rounded-md border border-[var(--app-border)]/50 px-3 py-2 text-[11px] leading-snug text-[var(--app-text-muted)]">
         暂无来源
       </div>
     );
   }
 
   return (
-    <div
-      className={cn(
-        "rounded-[12px] border border-[var(--app-border)] bg-[var(--app-surface-muted)]/90 text-[11px] text-[var(--app-text-muted)]",
-        expanded && "shadow-[var(--app-shadow-sm)]",
-      )}
-    >
-      <div className="flex items-center justify-between gap-2 px-3 py-2">
-        <span className="min-w-0 flex-1 truncate">
-          知识库来源 · 已引用 <span className="font-semibold text-[var(--app-text)]">{sources.length}</span>{" "}
-          条有效法条
+    <div className="rounded-md border border-[var(--app-border)]/50 text-[11px] text-[var(--app-text-muted)]">
+      <div className="flex items-center justify-between gap-2 px-2.5 py-1.5">
+        <span className="min-w-0 flex-1 truncate text-[var(--app-text-muted)]">
+          知识库来源 · 已引用 <span className="font-medium text-[var(--app-text)]">{sources.length}</span> 条有效法条
         </span>
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="shrink-0 rounded-lg border border-[var(--app-border)] bg-white px-2 py-1 text-[11px] font-medium text-[var(--app-primary)] hover:bg-[var(--app-surface-soft)]"
+          className="shrink-0 rounded border border-[var(--app-border)]/60 bg-white/80 px-2 py-0.5 text-[10px] font-medium text-[var(--app-text-subtle)] hover:bg-[var(--app-surface-soft)] hover:text-[var(--app-text)]"
           aria-expanded={expanded}
         >
           {expanded ? "收起" : "展开"}
@@ -146,22 +405,22 @@ function KnowledgeSourcesBlock({ sources }: { sources: QwenKbSource[] }) {
       </div>
 
       {expanded ? (
-        <div className="space-y-2 border-t border-[var(--app-border)]/80 bg-white/70 px-3 py-2.5">
+        <div className="divide-y divide-[var(--app-border)]/40 border-t border-[var(--app-border)]/40 px-2.5 pb-2 pt-2">
           {sources.map((source) => {
             const url = source.sourceUrl?.trim();
             return (
-              <div key={source.id} className="rounded-lg border border-[var(--app-border)]/90 bg-white px-2.5 py-2">
+              <div key={source.id} className="py-2.5 first:pt-0 last:pb-0">
                 <div className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] leading-snug text-[var(--app-text)]">
-                  <span className="shrink-0 font-semibold text-[var(--app-primary)]">[{source.id}]</span>
-                  <span className="text-[var(--app-text-subtle)]">｜</span>
+                  <span className="shrink-0 font-medium text-[var(--app-primary)]">[{source.id}]</span>
+                  <span className="text-[var(--app-text-subtle)]/80">｜</span>
                   <span className="min-w-0 flex-1 truncate font-medium">{source.lawName}</span>
-                  <span className="text-[var(--app-text-subtle)]">｜</span>
+                  <span className="text-[var(--app-text-subtle)]/80">｜</span>
                   <span className="max-w-[40%] truncate text-[var(--app-text-muted)]" title={chapterArticleLine(source)}>
                     {chapterArticleLine(source)}
                   </span>
-                  <span className="text-[var(--app-text-subtle)]">｜</span>
+                  <span className="text-[var(--app-text-subtle)]/80">｜</span>
                   <span className="shrink-0 truncate text-[var(--app-text-muted)]">{source.effectiveStatus}</span>
-                  <span className="text-[var(--app-text-subtle)]">｜</span>
+                  <span className="text-[var(--app-text-subtle)]/80">｜</span>
                   {url ? (
                     <a
                       href={url}
@@ -176,7 +435,7 @@ function KnowledgeSourcesBlock({ sources }: { sources: QwenKbSource[] }) {
                   )}
                 </div>
                 {source.text ? (
-                  <div className="mt-1.5 border-t border-[var(--app-border)]/70 pt-1.5">
+                  <div className="mt-1.5">
                     <div className="mb-0.5 text-[10px] text-[var(--app-text-subtle)]">
                       正文摘要（完整条文请点正文 [n] 或悬浮卡片）
                     </div>
@@ -352,37 +611,30 @@ function ActionChecklistBlock({
   muted?: boolean;
 }) {
   return (
-    <ul className={cn("m-0 list-none space-y-2.5 p-0", muted && "opacity-80")}>
+    <ol className={cn("m-0 list-none space-y-3 p-0", muted && "opacity-80")}>
       {items.map((block, idx) => {
         const parsed = peelFirstLineListPrefix(block);
-        const label =
-          parsed.variant === "number"
-            ? parsed.num ?? idx + 1
-            : parsed.variant === "bullet"
-              ? null
-              : idx + 1;
+        const n = idx + 1;
         return (
           <li key={`${idx}-${block.slice(0, 24)}`} className="flex gap-3">
             <span
-              className={cn(
-                "mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border border-emerald-400/45 bg-emerald-500/12 text-[11px] font-semibold text-emerald-900/90",
-                muted && "border-emerald-400/25 bg-emerald-500/8 text-emerald-900/65",
-              )}
+              className="mt-[0.35em] min-w-[1.5rem] shrink-0 text-right text-sm font-semibold tabular-nums text-[var(--app-text-muted)]"
               aria-hidden
             >
-              {parsed.variant === "bullet" ? (
-                <Check className="size-3.5 stroke-[2.5] text-emerald-700" aria-hidden />
-              ) : (
-                <span>{label}</span>
-              )}
+              {n}.
             </span>
-            <div className={cn("min-w-0 flex-1 text-sm leading-relaxed text-emerald-950/90", muted && "text-emerald-950/65")}>
+            <div
+              className={cn(
+                "min-w-0 flex-1 text-base leading-[1.75] text-[var(--app-text)]",
+                muted && "text-[var(--app-text-muted)]",
+              )}
+            >
               {renderTextWithCitations(parsed.body, sourceById)}
             </div>
           </li>
         );
       })}
-    </ul>
+    </ol>
   );
 }
 
@@ -394,25 +646,43 @@ function RiskBulletListBlock({
   sourceById: Map<number, QwenKbSource>;
 }) {
   return (
-    <ul className="m-0 list-none space-y-2 p-0">
+    <ul className="m-0 list-none space-y-2.5 p-0">
       {items.map((block, idx) => {
         const parsed = peelFirstLineListPrefix(block);
-        const marker =
-          parsed.variant === "number" ? (
-            <span
-              className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border border-amber-400/45 bg-amber-100/85 text-[11px] font-semibold text-amber-950/85"
-              aria-hidden
-            >
-              {parsed.num ?? idx + 1}
-            </span>
-          ) : (
-            <span className="mt-2 size-2 shrink-0 rounded-full bg-amber-500/55" aria-hidden />
-          );
+        const showNum = parsed.variant === "number";
+        const boundary = isRiskBoundarySortCategory(parsed.body);
         return (
-          <li key={`${idx}-${block.slice(0, 24)}`} className="flex gap-3">
-            {marker}
-            <div className="min-w-0 flex-1 text-sm leading-relaxed text-amber-950/88">
-              {renderTextWithCitations(parsed.body, sourceById)}
+          <li key={`${idx}-${block.slice(0, 24)}`} className="flex gap-2.5">
+            {boundary ? (
+              <span className="mt-[0.42em] flex w-4 shrink-0 justify-center" aria-hidden>
+                <AlertTriangle
+                  className="size-3.5 text-amber-600/85 dark:text-amber-500/90"
+                  strokeWidth={2}
+                  aria-hidden
+                />
+              </span>
+            ) : showNum ? (
+              <span
+                className="mt-[0.45em] w-4 shrink-0 text-right text-xs font-medium tabular-nums text-[var(--app-text-muted)]/80"
+                aria-hidden
+              >
+                {parsed.num ?? idx + 1}
+              </span>
+            ) : (
+              <span
+                className="mt-[0.65em] h-1 w-1 shrink-0 rounded-full bg-[var(--app-text-muted)]/35"
+                aria-hidden
+              />
+            )}
+            <div
+              className={cn(
+                "min-w-0 flex-1 text-base leading-[1.75] text-[var(--app-text)]",
+                boundary && "font-medium",
+              )}
+            >
+              {boundary
+                ? renderNoticeItemBody(parsed.body, sourceById)
+                : renderTextWithCitations(parsed.body, sourceById)}
             </div>
           </li>
         );
@@ -426,6 +696,8 @@ type QwenKbAnswerCardProps = {
   sources: QwenKbSource[];
   question: string;
   modelName: string;
+  /** 流式生成中：文末光标、隐藏底部操作按钮，避免误点 */
+  pending?: boolean;
   onRegenerate?: () => void;
   onCopy?: () => void;
   onFeedback?: () => void;
@@ -490,6 +762,7 @@ export function QwenKbAnswerCard({
   sources,
   question,
   modelName,
+  pending,
   onRegenerate,
   onCopy,
   onFeedback,
@@ -513,7 +786,6 @@ export function QwenKbAnswerCard({
   const riskBodyRaw = (answer.risks ?? riskDetail.content ?? "").trim();
   const actionBodyRaw = (answer.actionAdvice ?? suggestionDetail.content ?? "").trim();
 
-  const riskBody = riskBodyRaw ? riskBodyRaw : PLACEHOLDER_RISK;
   const suggestionBody = actionBodyRaw ? actionBodyRaw : PLACEHOLDER_SUGGESTION;
 
   const hasMeaningfulBasis =
@@ -521,15 +793,26 @@ export function QwenKbAnswerCard({
 
   const isActionPlaceholder = suggestionBody === PLACEHOLDER_SUGGESTION;
 
-  const conclusionDisplay = useMemo(
-    () => sanitizeDisplayConclusion(answer.conclusion ?? ""),
-    [answer.conclusion],
-  );
+  const conclusionDisplay = useMemo(() => {
+    const stripped = stripLeakedNoticeHeadingLines(answer.conclusion ?? "");
+    return sanitizeDisplayConclusion(stripped);
+  }, [answer.conclusion]);
 
   const [basisOpen, setBasisOpen] = useState(false);
 
-  const actionItems = useMemo(() => splitActionLines(suggestionBody), [suggestionBody]);
-  const riskItems = useMemo(() => splitActionLines(riskBody), [riskBody]);
+  const actionItems = useMemo(
+    () => splitActionLines(stripLeakedNoticeHeadingLines(suggestionBody)),
+    [suggestionBody],
+  );
+
+  const riskItems = useMemo(() => {
+    if (isPlaceholderRiskContent(riskBodyRaw)) return [];
+    let t = sanitizeRiskHeadingLabels(riskBodyRaw);
+    t = stripLeakedNoticeHeadingLines(t);
+    if (!t.trim()) return [];
+    const blocks = splitActionLines(t);
+    return sortRiskBlocksBoundaryLast(normalizeRiskBlocksForDisplay(blocks));
+  }, [riskBodyRaw]);
 
   const stepsRawTrimmed = answer.actionStepsRaw?.trim() ?? "";
   const parsedStepsTable = useMemo(
@@ -551,126 +834,131 @@ export function QwenKbAnswerCard({
     return parts.length ? parts : [stepsRawTrimmed];
   }, [stepsRawTrimmed, parsedStepsTable]);
 
+  const showActionStepsSection = useMemo(
+    () => shouldShowActionStepsSection(stepsRawTrimmed, actionBodyRaw, parsedStepsTable),
+    [stepsRawTrimmed, actionBodyRaw, parsedStepsTable],
+  );
+
+  const sectionTitleClass = "mb-2 text-base font-semibold tracking-tight text-[var(--app-text)]";
+
   return (
     <div className="rounded-2xl border border-[var(--app-border)] bg-white p-5 shadow-[var(--app-shadow-sm)]">
-      <div className="border-b border-[var(--app-border)]/70 pb-4 text-[11px] leading-relaxed text-[var(--app-text-muted)]">
+      <div className="border-b border-[var(--app-border)]/60 pb-3.5 text-[11px] leading-relaxed text-[var(--app-text-muted)]">
         问题：{question}
         <span className="ml-2 text-[var(--app-text-subtle)]">模型：{modelName}</span>
       </div>
 
-      <div className="mt-4 border-l-[3px] border-[var(--app-primary)]/35 bg-[var(--app-primary-soft)]/25 py-3 pl-4 pr-3">
-        <div className="mb-2 text-sm font-semibold tracking-tight text-[var(--app-text)]">结论</div>
-        <div className="text-[15px] font-medium leading-[1.65] text-[var(--app-text)]">
-          {conclusionDisplay
-            ? renderTextWithCitations(conclusionDisplay, sourceById)
-            : "未获取到回答。"}
-        </div>
-      </div>
-
-      <div className="mt-5 divide-y divide-[var(--app-border)]/60">
-        <div
-          className={cn(
-            "py-4 first:pt-0",
-            "bg-emerald-500/[0.04] px-1 -mx-1 rounded-lg",
-            isActionPlaceholder && "opacity-90",
-          )}
-        >
-          <div
-            className={cn(
-              "mb-2 text-sm font-semibold text-emerald-900/85",
-              isActionPlaceholder && "text-emerald-900/55",
-            )}
-          >
-            你现在最该做
+      <article className="mt-5 max-w-none text-[var(--app-text)]">
+        <header className="border-b border-[var(--app-border)]/35 pb-6">
+          <h2 className="mb-2.5 text-[1.0625rem] font-semibold tracking-tight text-[var(--app-text)]">结论</h2>
+          <div className="text-base font-normal leading-[1.7] text-[var(--app-text)]">
+            {conclusionDisplay
+              ? renderTextWithCitations(conclusionDisplay, sourceById)
+              : "未获取到回答。"}
           </div>
+        </header>
+
+        <section className="mt-7">
+          <h3 className={cn(sectionTitleClass, isActionPlaceholder && "text-[var(--app-text-muted)]")}>你现在最该做</h3>
           <ActionChecklistBlock items={actionItems} sourceById={sourceById} muted={isActionPlaceholder} />
-        </div>
+        </section>
 
-        <div className="bg-amber-500/[0.04] px-1 -mx-1 py-4 rounded-lg">
-          <div className="mb-2 text-sm font-semibold text-amber-950/80">风险提示</div>
-          <RiskBulletListBlock items={riskItems} sourceById={sourceById} />
-        </div>
+        {riskItems.length > 0 ? (
+          <section className="mt-7">
+            <h3 className={sectionTitleClass}>需要注意</h3>
+            <RiskBulletListBlock items={riskItems} sourceById={sourceById} />
+          </section>
+        ) : null}
 
-        {stepsRawTrimmed ? (
-          <div className="bg-sky-500/[0.04] px-1 -mx-1 py-4 rounded-lg">
-            <div className="mb-2 text-sm font-semibold text-sky-950/80">可执行操作步骤</div>
+        {showActionStepsSection ? (
+          <section className="mt-7">
+            <h3 className={sectionTitleClass}>可执行操作步骤</h3>
             {stepsDisplayMode === "table" && parsedStepsTable ? (
               <ActionStepsTable
                 rows={parsedStepsTable.rows}
                 renderCell={(t) => renderTextWithCitations(t, sourceById)}
               />
             ) : stepsDisplayMode === "prewrap" ? (
-              <div className="overflow-x-auto text-sm leading-relaxed text-sky-950/85">
+              <div className="overflow-x-auto text-base leading-[1.65] text-[var(--app-text)]">
                 <div className="min-w-0 whitespace-pre-wrap break-words">
                   {renderTextWithCitations(stepsRawTrimmed, sourceById)}
                 </div>
               </div>
             ) : (
-              <ul className="m-0 list-none space-y-2 p-0">
+              <ul className="m-0 list-none space-y-2.5 p-0">
                 {stepBlocks.map((block, idx) => (
                   <li key={`step-${idx}-${block.slice(0, 20)}`} className="flex gap-2.5">
-                    <span
-                      className="mt-2 size-1.5 shrink-0 rounded-full bg-sky-500/45"
-                      aria-hidden
-                    />
-                    <div className="min-w-0 flex-1 text-sm leading-relaxed text-sky-950/85">
+                    <span className="mt-[0.65em] h-1 w-1 shrink-0 rounded-full bg-[var(--app-text-muted)]/35" aria-hidden />
+                    <div className="min-w-0 flex-1 text-base leading-[1.65] text-[var(--app-text)]">
                       {renderTextWithCitations(block.trim(), sourceById)}
                     </div>
                   </li>
                 ))}
               </ul>
             )}
-          </div>
+          </section>
         ) : null}
 
         {hasMeaningfulBasis ? (
-          <div className="py-4">
+          <section className="mt-8 border-t border-[var(--app-border)]/35 pt-7">
             <button
               type="button"
               onClick={() => setBasisOpen((v) => !v)}
-              className="flex w-full items-center justify-between gap-2 rounded-lg border border-transparent px-1 py-1 text-left text-xs text-[var(--app-text-muted)] transition hover:border-[var(--app-border)]/80 hover:bg-[var(--app-surface-muted)]/50"
+              className="w-full rounded-sm px-0 py-0.5 text-left text-[11px] leading-snug text-[var(--app-text-muted)] transition hover:text-[var(--app-text)]"
               aria-expanded={basisOpen}
             >
-              <span>
-                引用依据 · <span className="text-[var(--app-primary)]">{basisOpen ? "收起" : "展开"}</span>
-              </span>
+              引用依据 · <span className="font-medium text-[var(--app-text-subtle)]">{basisOpen ? "收起" : "展开"}</span>
             </button>
             {basisOpen ? (
-              <div className="mt-2 text-sm leading-relaxed text-[var(--app-text)]">
+              <div className="mt-2.5 text-base leading-[1.65] text-[var(--app-text)]">
                 {renderTextWithCitations(basisBodyRaw, sourceById)}
               </div>
             ) : null}
-          </div>
+          </section>
         ) : null}
-      </div>
 
-      <div className="mt-5">
-        <KnowledgeSourcesBlock sources={sources} />
-      </div>
+        <div
+          className={cn(
+            "mt-8",
+            hasMeaningfulBasis ? "" : "border-t border-[var(--app-border)]/35 pt-7",
+          )}
+        >
+          <KnowledgeSourcesBlock sources={sources} />
+        </div>
 
-      <div className="mt-4 flex flex-wrap gap-2 border-t border-[var(--app-border)]/80 pt-3">
-        <button
-          type="button"
-          onClick={onRegenerate}
-          className="rounded-lg border border-[var(--app-border)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--app-text)] hover:bg-[var(--app-surface-soft)]"
-        >
-          重新生成
-        </button>
-        <button
-          type="button"
-          onClick={onCopy}
-          className="rounded-lg border border-[var(--app-border)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--app-text)] hover:bg-[var(--app-surface-soft)]"
-        >
-          复制
-        </button>
-        <button
-          type="button"
-          onClick={onFeedback}
-          className="rounded-lg border border-[var(--app-border)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--app-text)] hover:bg-[var(--app-surface-soft)]"
-        >
-          反馈
-        </button>
-      </div>
+        {pending ? (
+          <span
+            className="mt-4 inline-block h-[1.1em] w-0.5 translate-y-0.5 animate-pulse bg-[var(--app-primary)] align-baseline"
+            aria-hidden
+          />
+        ) : null}
+      </article>
+
+      {!pending ? (
+        <div className="mt-6 flex flex-wrap gap-2 border-t border-[var(--app-border)]/60 pt-4">
+          <button
+            type="button"
+            onClick={onRegenerate}
+            className="rounded-lg border border-[var(--app-border)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--app-text)] hover:bg-[var(--app-surface-soft)]"
+          >
+            重新生成
+          </button>
+          <button
+            type="button"
+            onClick={onCopy}
+            className="rounded-lg border border-[var(--app-border)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--app-text)] hover:bg-[var(--app-surface-soft)]"
+          >
+            复制
+          </button>
+          <button
+            type="button"
+            onClick={onFeedback}
+            className="rounded-lg border border-[var(--app-border)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--app-text)] hover:bg-[var(--app-surface-soft)]"
+          >
+            反馈
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

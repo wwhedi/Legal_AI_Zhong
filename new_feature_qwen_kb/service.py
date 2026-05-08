@@ -8,7 +8,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from copy import deepcopy
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, List, Literal, Optional, Sequence, Tuple
 
 from config.dashscope_config import get_configured_chat_model
 from config.legal_prompts import (
@@ -70,6 +70,133 @@ class _RequestClock:
 
 
 _NO_VALID_ANSWER = "知识库未检索到可用于回答该问题的有效法条，建议人工复核。"
+
+_MAX_CONVERSATION_HISTORY_ITEMS = 6
+_MAX_CONVERSATION_MESSAGE_CHARS = 800
+_MAX_CONVERSATION_HISTORY_TOTAL_CHARS = 3000
+
+
+def sanitize_conversation_history(raw: Sequence[Any]) -> List[Tuple[Literal["user", "assistant"], str]]:
+    """
+    服务端清洗多轮 history：不信任前端长度与条数。
+    规则：仅最近 6 条；role 仅 user/assistant；strip；空 content 丢弃；单条最多 800 字；正文总长不超过 3000 字（仅计各条 content）。
+    """
+    window = list(raw)[-_MAX_CONVERSATION_HISTORY_ITEMS:] if raw else []
+    out: List[Tuple[Literal["user", "assistant"], str]] = []
+    for item in window:
+        role = getattr(item, "role", None)
+        if role is None and isinstance(item, dict):
+            role = item.get("role")
+        if role not in ("user", "assistant"):
+            continue
+        content = getattr(item, "content", None)
+        if content is None and isinstance(item, dict):
+            content = item.get("content")
+        if not isinstance(content, str):
+            content = "" if content is None else str(content)
+        c = content.strip()
+        if not c:
+            continue
+        if len(c) > _MAX_CONVERSATION_MESSAGE_CHARS:
+            c = c[: _MAX_CONVERSATION_MESSAGE_CHARS]
+        out.append((role, c))
+
+    while out and sum(len(t[1]) for t in out) > _MAX_CONVERSATION_HISTORY_TOTAL_CHARS:
+        out.pop(0)
+    return out
+
+
+def build_conversation_context(history: Sequence[Tuple[Literal["user", "assistant"], str]]) -> str:
+    """将清洗后的 history 拼成可读块，供模型理解追问与补充事实（不得当作法律依据）。"""
+    if not history:
+        return ""
+    lines = ["【最近对话上下文】"]
+    for role, text in history:
+        label = "用户" if role == "user" else "助手"
+        lines.append(f"{label}：{text}")
+    return "\n".join(lines)
+
+
+def _prepend_conversation_context(conversation_context: str, body: str) -> str:
+    cc = (conversation_context or "").strip()
+    if not cc:
+        return body
+    return f"{cc}\n\n{body}"
+
+
+def _build_query_rewrite_user_prompt(question: str, conversation_context: str) -> str:
+    """query 改写专用：模板内显式区分 conversation_context 与当前 question，避免与回答链路重复拼接逻辑。"""
+    cc = (conversation_context or "").strip()
+    if not cc:
+        cc = "（无：本轮无最近对话上下文。若当前用户问题本身是完整独立的法律问题，则按全新问题处理，JSON 中 context_used 应为 false。）"
+    return (
+        LEGAL_QUERY_REWRITE_USER_PROMPT_TEMPLATE.replace("{conversation_context}", cc)
+        .replace("{question}", question)
+    )
+
+
+def _normalize_rewrite_search_fields(qr: Dict[str, Any]) -> None:
+    """retrieval_query 与 search_query 二选一或并存时对齐，保证下游 kb.retrieve 兼容。"""
+    if not isinstance(qr, dict):
+        return
+    rq = str(qr.get("retrieval_query") or "").strip()
+    sq = str(qr.get("search_query") or "").strip()
+    if rq and not sq:
+        qr["search_query"] = rq
+    elif sq and not rq:
+        qr["retrieval_query"] = sq
+    elif rq and sq and rq != sq:
+        qr["search_query"] = rq
+
+
+def _effective_search_query_from_rewrite(qr: Dict[str, Any]) -> str:
+    """优先 retrieval_query，其次 search_query（旧 JSON）。"""
+    rq = str(qr.get("retrieval_query") or "").strip()
+    sq = str(qr.get("search_query") or "").strip()
+    return rq or sq
+
+
+def _coerce_context_used(raw: Any) -> bool:
+    if raw is True:
+        return True
+    if raw is False:
+        return False
+    if isinstance(raw, str):
+        return raw.strip().lower() in ("true", "1", "yes", "是")
+    return bool(raw)
+
+
+def _format_standalone_for_answer(raw: str) -> str:
+    s = (raw or "").strip()
+    return s if s else "（无。请主要依据「当前用户问题」与检索结果作答。）"
+
+
+def _format_conversation_context_for_answer(raw: str) -> str:
+    s = (raw or "").strip()
+    return s if s else "（无最近对话上下文。）"
+
+
+def _build_rag_answer_user_prompt(
+    *,
+    question: str,
+    conversation_context: str,
+    retrieval_query_info: str,
+    kb_context_for_prompt: str,
+    ref_lines_str: str,
+    qr: Dict[str, Any],
+) -> str:
+    """最终回答 user 提示：显式包含当前问、改写 standalone、多轮上下文（无则占位），不再前置重复拼接 conversation_context。"""
+    standalone = _format_standalone_for_answer(str(qr.get("standalone_question") or ""))
+    convo = _format_conversation_context_for_answer(conversation_context)
+    tpl = LEGAL_RAG_ANSWER_USER_PROMPT_TEMPLATE
+    return (
+        tpl.replace("{retrieval_query_info}", retrieval_query_info)
+        .replace("{kb_context}", kb_context_for_prompt)
+        .replace("{ref_lines}", ref_lines_str)
+        .replace("{question}", question)
+        .replace("{standalone_question}", standalone)
+        .replace("{conversation_context}", convo)
+    )
 
 
 def parse_query_rewrite_result(text: str) -> Dict[str, Any]:
@@ -284,11 +411,16 @@ def _rewrite_summary_data(qr: Dict[str, Any]) -> Dict[str, Any]:
     query_variants = qv if isinstance(qv, list) else []
     rf = qr.get("required_filters")
     required_filters: Dict[str, Any] = rf if isinstance(rf, dict) else {"effective_status": "有效"}
+    effective = _effective_search_query_from_rewrite(qr)
+    rq_out = str(qr.get("retrieval_query") or "").strip() or effective
     return {
         "legal_intent": str(qr.get("legal_intent") or "").strip(),
         "core_keywords": [str(x).strip() for x in core_keywords if str(x).strip()],
         "legal_concepts": [str(x).strip() for x in legal_concepts if str(x).strip()],
-        "search_query": str(qr.get("search_query") or "").strip(),
+        "search_query": effective,
+        "retrieval_query": rq_out,
+        "standalone_question": str(qr.get("standalone_question") or "").strip(),
+        "context_used": _coerce_context_used(qr.get("context_used")),
         "query_variants": [str(x).strip() for x in query_variants if str(x).strip()],
         "required_filters": required_filters,
     }
@@ -339,7 +471,7 @@ class QwenKBRagService:
         self.reasoning = ReasoningService()
         self.model_name = get_configured_chat_model()
 
-    async def ask(self, question: str) -> Dict[str, Any]:
+    async def ask(self, question: str, conversation_history: Optional[Sequence[Any]] = None) -> Dict[str, Any]:
         request_id = _new_request_id()
         clk = _RequestClock(request_id)
         _log_new_rag_timing(
@@ -360,6 +492,9 @@ class QwenKBRagService:
             )
             raise ValueError("question is required")
 
+        sanitized_history = sanitize_conversation_history(conversation_history or ())
+        conversation_context = build_conversation_context(sanitized_history)
+
         _log_new_rag_timing(
             request_id,
             "query_rewrite_start",
@@ -370,13 +505,14 @@ class QwenKBRagService:
         rewrite_failed = False
         qr: Dict[str, Any] = {}
         try:
-            rewrite_user = LEGAL_QUERY_REWRITE_USER_PROMPT_TEMPLATE.replace("{question}", q)
+            rewrite_user = _build_query_rewrite_user_prompt(q, conversation_context)
             rewrite_out = await self.reasoning.generate(
                 system_prompt=LEGAL_QUERY_REWRITE_SYSTEM_PROMPT,
                 user_prompt=rewrite_user,
                 model=self.model_name,
             )
             qr = parse_query_rewrite_result(rewrite_out)
+            _normalize_rewrite_search_fields(qr)
         except Exception as exc:
             rewrite_failed = True
             logger.warning(
@@ -393,11 +529,11 @@ class QwenKBRagService:
             elapsed_ms=clk.elapsed_ms(),
         )
 
-        sq_raw = str(qr.get("search_query") or "").strip()
+        sq_raw = _effective_search_query_from_rewrite(qr)
         empty_search_query_after_parse = bool(qr) and not sq_raw
         if empty_search_query_after_parse:
             logger.warning(
-                "new_rag query rewrite returned empty search_query after successful JSON parse; "
+                "new_rag query rewrite returned empty retrieval_query/search_query after successful JSON parse; "
                 "using original question as search_query. keys=%s",
                 list(qr.keys()),
             )
@@ -536,12 +672,13 @@ class QwenKBRagService:
         ref_lines_str = "\n\n".join(ref_blocks)
         kb_context_for_prompt = _build_effective_kb_context(renumbered)
 
-        tpl = LEGAL_RAG_ANSWER_USER_PROMPT_TEMPLATE
-        user_prompt = (
-            tpl.replace("{retrieval_query_info}", retrieval_query_info)
-            .replace("{kb_context}", kb_context_for_prompt)
-            .replace("{ref_lines}", ref_lines_str)
-            .replace("{question}", q)
+        user_prompt = _build_rag_answer_user_prompt(
+            question=q,
+            conversation_context=conversation_context,
+            retrieval_query_info=retrieval_query_info,
+            kb_context_for_prompt=kb_context_for_prompt,
+            ref_lines_str=ref_lines_str,
+            qr=qr,
         )
 
         ans_seg = clk.mark()
@@ -577,7 +714,9 @@ class QwenKBRagService:
             "retrieved_count": len(renumbered),
         }
 
-    async def ask_events(self, question: str) -> AsyncIterator[Dict[str, Any]]:
+    async def ask_events(
+        self, question: str, conversation_history: Optional[Sequence[Any]] = None
+    ) -> AsyncIterator[Dict[str, Any]]:
         """
         与 ask() 相同处理链路，按阶段 yield NDJSON 事件（聚焦检索与依据分析，不含 prompt、密钥、思维链）。
         """
@@ -638,19 +777,23 @@ class QwenKBRagService:
                 )
                 return
 
+            sanitized_history = sanitize_conversation_history(conversation_history or ())
+            conversation_context = build_conversation_context(sanitized_history)
+
             yield _emit_timing_event(clk, request_id, "query_rewrite_start", "query rewrite started", 0)
 
             rewrite_failed = False
             qr: Dict[str, Any] = {}
             qr_seg = clk.mark()
             try:
-                rewrite_user = LEGAL_QUERY_REWRITE_USER_PROMPT_TEMPLATE.replace("{question}", q)
+                rewrite_user = _build_query_rewrite_user_prompt(q, conversation_context)
                 rewrite_out = await self.reasoning.generate(
                     system_prompt=LEGAL_QUERY_REWRITE_SYSTEM_PROMPT,
                     user_prompt=rewrite_user,
                     model=self.model_name,
                 )
                 qr = parse_query_rewrite_result(rewrite_out)
+                _normalize_rewrite_search_fields(qr)
             except Exception as exc:
                 rewrite_failed = True
                 logger.warning(
@@ -668,11 +811,11 @@ class QwenKBRagService:
                 _perf_ms(qr_seg),
             )
 
-            sq_raw = str(qr.get("search_query") or "").strip()
+            sq_raw = _effective_search_query_from_rewrite(qr)
             empty_search_query_after_parse = bool(qr) and not sq_raw
             if empty_search_query_after_parse:
                 logger.warning(
-                    "new_rag stream query rewrite returned empty search_query after successful JSON parse; "
+                    "new_rag stream query rewrite returned empty retrieval_query/search_query after successful JSON parse; "
                     "using original question as search_query. keys=%s",
                     list(qr.keys()),
                 )
@@ -866,11 +1009,14 @@ class QwenKBRagService:
             analysis_loop_start = clk.mark()
             analysis_first_delta_seen = False
             try:
-                public_user = LEGAL_PUBLIC_ANALYSIS_USER_PROMPT_TEMPLATE.format(
-                    question=q,
-                    retrieval_query_info=retrieval_query_info,
-                    ref_lines=ref_lines_str,
-                    kb_context=kb_context_for_prompt,
+                public_user = _prepend_conversation_context(
+                    conversation_context,
+                    LEGAL_PUBLIC_ANALYSIS_USER_PROMPT_TEMPLATE.format(
+                        question=q,
+                        retrieval_query_info=retrieval_query_info,
+                        ref_lines=ref_lines_str,
+                        kb_context=kb_context_for_prompt,
+                    ),
                 )
                 async for delta in self.reasoning.generate_stream(
                     system_prompt=LEGAL_PUBLIC_ANALYSIS_SYSTEM_PROMPT,
@@ -944,12 +1090,13 @@ class QwenKBRagService:
                 data={"analysis": public_analysis},
             )
 
-            tpl = LEGAL_RAG_ANSWER_USER_PROMPT_TEMPLATE
-            user_prompt = (
-                tpl.replace("{retrieval_query_info}", retrieval_query_info)
-                .replace("{kb_context}", kb_context_for_prompt)
-                .replace("{ref_lines}", ref_lines_str)
-                .replace("{question}", q)
+            user_prompt = _build_rag_answer_user_prompt(
+                question=q,
+                conversation_context=conversation_context,
+                retrieval_query_info=retrieval_query_info,
+                kb_context_for_prompt=kb_context_for_prompt,
+                ref_lines_str=ref_lines_str,
+                qr=qr,
             )
 
             yield _emit_timing_event(clk, request_id, "answer_generation_start", "final answer generation started", 0)
@@ -1062,4 +1209,9 @@ class QwenKBRagService:
             )
 
 
-__all__ = ["QwenKBRagService", "parse_query_rewrite_result"]
+__all__ = [
+    "QwenKBRagService",
+    "parse_query_rewrite_result",
+    "sanitize_conversation_history",
+    "build_conversation_context",
+]

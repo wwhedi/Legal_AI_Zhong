@@ -9,6 +9,8 @@ export type ChatSessionSidebarProps = {
   sessions: ChatSession[];
   activeSessionId: string | null;
   loading?: boolean;
+  /** Native `title` on new-chat and session buttons while generating (e.g. switch will stop). */
+  loadingInteractionHint?: string;
   onNewSession: () => void;
   onSelectSession: (sessionId: string) => void;
   collapsed: boolean;
@@ -44,12 +46,15 @@ export function ChatSessionSidebar({
   sessions,
   activeSessionId,
   loading = false,
+  loadingInteractionHint,
   onNewSession,
   onSelectSession,
   collapsed,
   onToggleCollapsed,
   showCollapseToggle = true,
 }: ChatSessionSidebarProps) {
+  const loadingTitle = loading && loadingInteractionHint ? loadingInteractionHint : undefined;
+
   if (collapsed) {
     return (
       <div className="flex h-full min-h-0 w-full min-w-0 flex-col items-stretch border-0 border-[var(--app-border)] bg-[var(--app-surface)]/95">
@@ -64,9 +69,12 @@ export function ChatSessionSidebar({
           </button>
           <button
             type="button"
-            disabled={loading}
+            title={loadingTitle}
             onClick={onNewSession}
-            className="inline-flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--app-primary)] to-[var(--app-primary-strong)] text-white shadow-[var(--app-shadow-sm)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-45"
+            className={cn(
+              "inline-flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--app-primary)] to-[var(--app-primary-strong)] text-white shadow-[var(--app-shadow-sm)] transition hover:opacity-95",
+              loading && "ring-1 ring-[var(--app-primary)]/25",
+            )}
             aria-label="新对话"
           >
             <MessageSquarePlus className="size-4 shrink-0" aria-hidden />
@@ -94,9 +102,12 @@ export function ChatSessionSidebar({
         </div>
         <button
           type="button"
-          disabled={loading}
+          title={loadingTitle}
           onClick={onNewSession}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-[var(--app-primary)] to-[var(--app-primary-strong)] px-3 py-2.5 text-sm font-medium text-white shadow-[var(--app-shadow-sm)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-45"
+          className={cn(
+            "flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-[var(--app-primary)] to-[var(--app-primary-strong)] px-3 py-2.5 text-sm font-medium text-white shadow-[var(--app-shadow-sm)] transition hover:opacity-95",
+            loading && "ring-1 ring-[var(--app-primary)]/25",
+          )}
         >
           <MessageSquarePlus className="size-4 shrink-0" aria-hidden />
           新对话
@@ -114,7 +125,7 @@ export function ChatSessionSidebar({
                 <li key={s.id} className="min-w-0">
                   <button
                     type="button"
-                    disabled={loading}
+                    title={loadingTitle}
                     aria-current={active ? "true" : undefined}
                     onClick={() => onSelectSession(s.id)}
                     className={cn(
@@ -122,7 +133,7 @@ export function ChatSessionSidebar({
                       active
                         ? "border-[var(--app-primary)]/35 bg-[var(--app-primary-soft)] text-[var(--app-text)] ring-1 ring-[var(--app-primary)]/20"
                         : "border-transparent bg-white/80 text-[var(--app-text)] hover:border-[var(--app-border)] hover:bg-[var(--app-surface-muted)]",
-                      loading && "cursor-not-allowed opacity-50 hover:border-transparent hover:bg-white/80",
+                      loading && "ring-1 ring-amber-500/15",
                     )}
                   >
                     <span className="line-clamp-2 font-medium leading-snug">{s.title || "新对话"}</span>

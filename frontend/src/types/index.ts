@@ -4,6 +4,7 @@ import type { QwenAnswer } from "@/components/chat/QwenKbAnswerCard";
 export type RagProcessEventType =
   | "progress"
   | "retrieval"
+  | "timing"
   | "analysis"
   | "analysis_delta"
   | "answer"
@@ -121,6 +122,12 @@ export interface QwenKbSource {
   sourceUrl: string | null;
   score?: number;
 }
+
+/** /new-rag/ask-stream 可选多轮上下文（字段名与请求体对齐；后端可忽略） */
+export type ConversationHistoryTurn = {
+  role: "user" | "assistant";
+  content: string;
+};
 
 /** 知识库问答页单条消息（与 new-feature-chat 页内 ChatItem 对齐，供会话持久化复用） */
 export type ChatItem = {

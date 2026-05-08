@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bot, Loader2, MessageSquarePlus, Send, User, X } from "lucide-react";
+import { Bot, MessageSquarePlus, Send, Square, User, X } from "lucide-react";
 import {
   PLACEHOLDER_BASIS,
   PLACEHOLDER_RISK,
@@ -11,7 +11,6 @@ import {
 } from "@/components/chat/QwenKbAnswerCard";
 import { ChatSessionSidebar } from "@/components/chat/ChatSessionSidebar";
 import { ProcessTimeline } from "@/components/chat/ProcessTimeline";
-import { StreamingAnswerDraft } from "@/components/chat/StreamingAnswerDraft";
 import {
   createChatSession,
   generateSessionTitle,
@@ -22,7 +21,13 @@ import {
   updateChatSession,
 } from "@/lib/chat-sessions";
 import { cn } from "@/lib/utils";
-import type { ChatItem, ChatSession, QwenKbSource, RagProcessEvent } from "@/types";
+import type {
+  ChatItem,
+  ChatSession,
+  ConversationHistoryTurn,
+  QwenKbSource,
+  RagProcessEvent,
+} from "@/types";
 
 type NewRagCitation = {
   ref_id?: string;
@@ -53,6 +58,36 @@ type NewRagResponse = {
 };
 
 const DEFAULT_BASE_URL = "http://localhost:8000";
+/** 与流式回答兜底模型名一致（见 pushEvent 内解析 d.model） */
+const DEFAULT_STREAM_MODEL_NAME = "qwen-plus";
+
+/** 发往 /new-rag/ask-stream 的 conversation_history：条数与单条长度上限 */
+const MAX_HISTORY_MESSAGES = 6;
+const MAX_USER_HISTORY_CHARS = 500;
+const MAX_ASSISTANT_HISTORY_CHARS = 800;
+
+/** 距底部超过此值视为用户主动上滑，暂停自动滚到底 */
+const AUTO_SCROLL_PAUSE_BELOW_PX = 120;
+/** 距底部小于此值恢复自动跟随 */
+const AUTO_SCROLL_RESUME_BELOW_PX = 80;
+
+function buildConversationHistoryForAskStream(recentMessages: ChatItem[]): ConversationHistoryTurn[] {
+  const out: ConversationHistoryTurn[] = [];
+  for (const m of recentMessages) {
+    if (m.role === "user") {
+      const content = (m.content ?? "").trim().slice(0, MAX_USER_HISTORY_CHARS);
+      if (!content) continue;
+      out.push({ role: "user", content });
+      continue;
+    }
+    const conclusion = (m.answerCard?.answer?.conclusion ?? "").trim();
+    const raw = conclusion || (m.content ?? "").trim();
+    const content = raw.slice(0, MAX_ASSISTANT_HISTORY_CHARS);
+    if (!content) continue;
+    out.push({ role: "assistant", content });
+  }
+  return out;
+}
 
 function getApiBaseUrl() {
   return process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, "") || DEFAULT_BASE_URL;
@@ -64,6 +99,56 @@ function parseRefIdToNumber(refId?: string): number | null {
   if (!m) return null;
   const n = Number(m[1]);
   return Number.isFinite(n) ? n : null;
+}
+
+function asEventRecord(v: unknown): Record<string, unknown> | null {
+  return v != null && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+}
+
+function chapterArticleFromParts(ch: unknown, ar: unknown): string {
+  const c = ch != null ? String(ch).trim() : "";
+  const a = ar != null ? String(ar).trim() : "";
+  if (c === "未提供" && a === "未提供") return "未提供";
+  if (c && c !== "未提供" && a && a !== "未提供") return `${c}；${a}`;
+  return c && c !== "未提供" ? c : a || "未提供";
+}
+
+/** 与 ProcessTimeline 一致：从 kb_retrieve_done 的 citations_summary 构造来源，供流式阶段 QwenKbAnswerCard 的 [n] 悬浮 */
+function kbSourcesFromRagEvents(events: RagProcessEvent[]): QwenKbSource[] {
+  const hit = [...events].reverse().find((e) => e.stage === "kb_retrieve_done");
+  const d = asEventRecord(hit?.data);
+  const arr = d && Array.isArray(d.citations_summary) ? d.citations_summary : [];
+  const out: QwenKbSource[] = [];
+  for (const raw of arr) {
+    const row = asEventRecord(raw);
+    if (!row) continue;
+    const id = parseRefIdToNumber(row.ref_id != null ? String(row.ref_id) : undefined);
+    if (!id) continue;
+    const lawName = row.law_name != null ? String(row.law_name) : "未提供";
+    const chapter = row.chapter != null ? String(row.chapter) : "未提供";
+    const article = row.article != null ? String(row.article) : "未提供";
+    const refRaw = row.ref_id != null ? String(row.ref_id).trim() : "";
+    out.push({
+      id,
+      refId: refRaw || `[${id}]`,
+      lawName,
+      lawType: "未提供",
+      effectiveStatus: row.effective_status != null ? String(row.effective_status) : "未提供",
+      publishDate: row.publish_date != null ? String(row.publish_date) : "未提供",
+      effectiveDate: row.effective_date != null ? String(row.effective_date) : "未提供",
+      chapter,
+      article,
+      text: `${lawName} · ${chapterArticleFromParts(chapter, article)}`,
+      sourceUrl: (() => {
+        const su = row.source_url ?? row.sourceUrl;
+        if (su == null) return null;
+        const s = String(su).trim();
+        return s ? s : null;
+      })(),
+      score: typeof row.score === "number" ? row.score : undefined,
+    });
+  }
+  return out.sort((a, b) => a.id - b.id);
 }
 
 type SectionKind = "conclusion" | "basis" | "risks" | "actionAdvice" | "actionSteps";
@@ -337,6 +422,38 @@ const SECTION_HEADER_RULES: SectionHeaderRule[] = [
   {
     kind: "risks",
     friendly: true,
+    match: new RegExp(`^\\s*${SEC_P3}需要注意`),
+    flexStrips: [new RegExp(`^\\s*${SEC_P3}需要注意\\s*(.*)$`, "s")],
+    strips: [
+      /^\s*(?:(?:[3３]\s*(?:[)）]|[、,，]|[.．])\s*|[三]\s*[、,，.]\s*|3\s*\.)\s*)需要注意(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*(?:(?:[3３]\s*(?:[)）]|[、,，]|[.．])\s*|[三]\s*[、,，.]\s*|3\s*\.)\s*)需要注意\s*$/s,
+    ],
+  },
+  {
+    kind: "risks",
+    friendly: true,
+    match: /^\s*需要注意(?:\s*[：:]|\s+$|\s+)/,
+    flexStrips: [
+      /^\s*需要注意\s*[：:]\s*(.*)$/s,
+      /^\s*需要注意\s+(.+)$/s,
+      /^\s*需要注意\s*$/s,
+    ],
+    strips: [/^\s*需要注意(\s*[：:]\s*|\s+)(.*)$/s, /^\s*需要注意\s*$/s],
+  },
+  {
+    kind: "risks",
+    friendly: true,
+    match: /^\s*三[、.,．]\s*需要注意(?:\s*[：:]|\s+$|\s+)/,
+    flexStrips: [
+      /^\s*三[、.,．]\s*需要注意\s*[：:]\s*(.*)$/s,
+      /^\s*三[、.,．]\s*需要注意\s+(.+)$/s,
+      /^\s*三[、.,．]\s*需要注意\s*$/s,
+    ],
+    strips: [/^\s*三[、.,．]\s*需要注意(\s*[：:]\s*|\s+)(.*)$/s, /^\s*三[、.,．]\s*需要注意\s*$/s],
+  },
+  {
+    kind: "risks",
+    friendly: true,
     match: new RegExp(`^\\s*${SEC_P3}风险提示`),
     flexStrips: [new RegExp(`^\\s*${SEC_P3}风险提示\\s*(.*)$`, "s")],
     strips: [
@@ -516,6 +633,8 @@ function peelFollowingSection(
       /(?<![0-9０-９])(?:(?:[2２]\s*(?:[)）]|[、,，]|[.．])\s*|[二]\s*[、,，.]\s*|2\s*\.)\s*)(?:引用依据|相关依据)\s*[：:]?\s*/,
     ],
     risks: [
+      /(?<![0-9０-９])(?:(?:[3３]\s*(?:[)）]|[、,，]|[.．])\s*|[三]\s*[、,，.]\s*|3\s*\.)\s*)需要注意\s*[：:]?\s*/,
+      /(?<![0-9０-９])三[、.,．]\s*需要注意\s*[：:]?\s*/,
       /(?<![0-9０-９])(?:(?:[3３]\s*(?:[)）]|[、,，]|[.．])\s*|[三]\s*[、,，.]\s*|3\s*\.)\s*)风险提示\s*[：:]?\s*/,
       /(?<![0-9０-９])(?:(?:[3３]\s*(?:[)）]|[、,，]|[.．])\s*|[三]\s*[、,，.]\s*|3\s*\.)\s*)主要风险\s*[：:]?\s*/,
       /(?<![0-9０-９])(?:(?:[3３]\s*(?:[)）]|[、,，]|[.．])\s*|[三]\s*[、,，.]\s*|3\s*\.)\s*)注意风险\s*[：:]?\s*/,
@@ -594,7 +713,7 @@ function fallbackFourPart(text: string): {
       continue;
     }
     const listCitation = /^[-*•]\s*\[[0-9０-９]+\]/.test(t);
-    const riskHead = /^(?:风险点|风险|风险提示)\s*[：:]/.test(t);
+    const riskHead = /^(?:风险点|风险|风险提示|需要注意)\s*[：:]/.test(t);
     const action = ACTION_LINE_RE.test(t);
     if (phase === "head" && listCitation) {
       phase = "basis";
@@ -735,7 +854,7 @@ function normalizeAnswer(answer: string): QwenAnswer {
   const actionStepsRaw = actionSteps.trim() ? actionSteps.trim() : undefined;
 
   const d0 = sawFriendlyDetailTitles ? "法律依据" : "依据";
-  const d1 = sawFriendlyDetailTitles ? "风险提示" : "风险点";
+  const d1 = sawFriendlyDetailTitles ? "需要注意" : "风险点";
   const d2 = sawFriendlyDetailTitles ? "你现在最该做" : "建议";
 
   return {
@@ -829,6 +948,14 @@ function deriveLastMetaFromMessages(messages: ChatItem[]): { model: string; retr
   return null;
 }
 
+function isAbortLikeError(error: unknown): boolean {
+  if (typeof DOMException !== "undefined" && error instanceof DOMException && error.name === "AbortError") {
+    return true;
+  }
+  if (error instanceof Error && error.name === "AbortError") return true;
+  return false;
+}
+
 export default function NewFeatureChatPage() {
   const [messages, setMessages] = useState<ChatItem[]>([]);
   const [input, setInput] = useState("");
@@ -842,6 +969,14 @@ export default function NewFeatureChatPage() {
   const [sessionSidebarCollapsed, setSessionSidebarCollapsed] = useState(false);
   const [mobileSessionsOpen, setMobileSessionsOpen] = useState(false);
   const activeSessionIdRef = useRef<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const currentGenerationIdRef = useRef(0);
+  const generationSessionIdRef = useRef<string | null>(null);
+  const streamingDraftAccumulatorRef = useRef("");
+  const inflightAnswerAttachedRef = useRef(false);
+  const messagesScrollRef = useRef<HTMLDivElement>(null);
+  /** 为 false 避免会话初次加载时强行滚到底；发送新问题时置 true */
+  const shouldAutoScrollRef = useRef(false);
 
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
@@ -876,8 +1011,55 @@ export default function NewFeatureChatPage() {
     setSessions(getChatSessions());
   }, []);
 
+  const stopGeneration = useCallback((opts?: { persistDraft?: boolean }) => {
+    const persistDraft = opts?.persistDraft !== false;
+
+    const sessionForDraft = generationSessionIdRef.current;
+    const draftFull = streamingDraftAccumulatorRef.current.trim();
+    const hadAnswer = inflightAnswerAttachedRef.current;
+
+    currentGenerationIdRef.current += 1;
+
+    const ac = abortControllerRef.current;
+    if (ac) {
+      try {
+        ac.abort();
+      } catch {
+        /* ignore */
+      }
+      abortControllerRef.current = null;
+    }
+
+    generationSessionIdRef.current = null;
+    streamingDraftAccumulatorRef.current = "";
+    inflightAnswerAttachedRef.current = false;
+
+    if (persistDraft && sessionForDraft && draftFull && !hadAnswer) {
+      const msg: ChatItem = {
+        id: `a_stop_${Date.now()}`,
+        role: "assistant",
+        content: `${draftFull}\n\n（已停止生成，以上内容可能不完整。）`,
+        createdAt: new Date().toISOString(),
+      };
+      const all = getChatSessions();
+      const sess = all.find((s) => s.id === sessionForDraft);
+      if (sess) {
+        updateChatSession(sessionForDraft, { messages: [...sess.messages, msg] });
+      }
+      if (activeSessionIdRef.current === sessionForDraft) {
+        setMessages((prev) => [...prev, msg]);
+      }
+    }
+
+    setLoading(false);
+    setStreamingEvents([]);
+    queueMicrotask(refreshSessionsList);
+  }, [refreshSessionsList]);
+
   const handleNewSession = useCallback(() => {
-    if (loading) return;
+    if (loading) {
+      stopGeneration({ persistDraft: true });
+    }
     const newSess = createChatSession("新对话");
     const rest = getChatSessions();
     saveChatSessions([newSess, ...rest]);
@@ -890,11 +1072,13 @@ export default function NewFeatureChatPage() {
     setLastMeta(null);
     setLastQuestion("");
     setSessions(getChatSessions());
-  }, [loading]);
+  }, [loading, stopGeneration]);
 
   const handleSelectSession = useCallback(
     (sessionId: string) => {
-      if (loading) return;
+      if (loading) {
+        stopGeneration({ persistDraft: true });
+      }
       const session = getChatSessions().find((s) => s.id === sessionId);
       if (!session) return;
       persistActiveSessionId(session.id);
@@ -906,7 +1090,7 @@ export default function NewFeatureChatPage() {
       setLastQuestion(deriveLastQuestionFromMessages(session.messages));
       setLastMeta(deriveLastMetaFromMessages(session.messages));
     },
-    [loading],
+    [loading, stopGeneration],
   );
 
   const handleSelectSessionMobile = useCallback(
@@ -923,6 +1107,13 @@ export default function NewFeatureChatPage() {
 
   const emptyHint = useMemo(() => "示例：竞业限制协议最多约定几年？", []);
 
+  const topStatusBarLabel = useMemo(() => {
+    const modelHint = lastMeta?.model ?? DEFAULT_STREAM_MODEL_NAME;
+    if (loading) return `模型：${modelHint} · 正在检索`;
+    if (lastMeta) return `模型：${lastMeta.model} · 检索片段：${lastMeta.retrievedCount}`;
+    return `模型：${DEFAULT_STREAM_MODEL_NAME} · 等待提问`;
+  }, [lastMeta, loading]);
+
   const streamingAnswerDraft = useMemo(() => {
     let acc = "";
     for (const e of streamingEvents) {
@@ -934,16 +1125,67 @@ export default function NewFeatureChatPage() {
     return acc;
   }, [streamingEvents]);
 
-  const answerGenerationLive = useMemo(
-    () =>
-      streamingEvents.some((e) => e.stage === "answer_generation_start") &&
-      !streamingEvents.some((e) => e.type === "answer"),
+  const streamingKbSources = useMemo(() => kbSourcesFromRagEvents(streamingEvents), [streamingEvents]);
+
+  const streamingNormalizedAnswer = useMemo(
+    () => normalizeAnswer(streamingAnswerDraft),
+    [streamingAnswerDraft],
+  );
+
+  const onMessagesScroll = useCallback(() => {
+    const el = messagesScrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (distanceFromBottom > AUTO_SCROLL_PAUSE_BELOW_PX) {
+      shouldAutoScrollRef.current = false;
+    } else if (distanceFromBottom < AUTO_SCROLL_RESUME_BELOW_PX) {
+      shouldAutoScrollRef.current = true;
+    }
+  }, []);
+
+  const scrollMessagesToBottomIfPinned = useCallback(() => {
+    if (!shouldAutoScrollRef.current) return;
+    const el = messagesScrollRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      if (!shouldAutoScrollRef.current) return;
+      const box = messagesScrollRef.current;
+      if (!box) return;
+      box.scrollTop = box.scrollHeight;
+    });
+  }, []);
+
+  useEffect(() => {
+    scrollMessagesToBottomIfPinned();
+  }, [messages, streamingEvents, streamingAnswerDraft, scrollMessagesToBottomIfPinned]);
+
+  /** answer 已写入 messages 后不再展示底部加载区，避免与消息内 ProcessTimeline 重复 */
+  const streamHasAnswer = useMemo(
+    () => streamingEvents.some((e) => e.type === "answer"),
     [streamingEvents],
   );
 
   const send = async (overrideQuestion?: string) => {
     const question = (overrideQuestion ?? input).trim();
-    if (!question || loading || !sessionReady || !activeSessionIdRef.current) return;
+    if (!question || loading || !sessionReady) return;
+
+    const sessionIdAtStart = activeSessionIdRef.current;
+    if (!sessionIdAtStart) return;
+
+    shouldAutoScrollRef.current = true;
+
+    /** 本轮尚未写入 messages；取当前会话最近 6 条作为历史，且不包含当前 question */
+    const conversation_history = buildConversationHistoryForAskStream(
+      messages.slice(-MAX_HISTORY_MESSAGES),
+    );
+
+    const myGenerationId = ++currentGenerationIdRef.current;
+    generationSessionIdRef.current = sessionIdAtStart;
+    streamingDraftAccumulatorRef.current = "";
+    inflightAnswerAttachedRef.current = false;
+
+    const ac = new AbortController();
+    abortControllerRef.current = ac;
 
     const nowIso = new Date().toISOString();
     const userMsg: ChatItem = {
@@ -954,17 +1196,14 @@ export default function NewFeatureChatPage() {
     };
     setMessages((prev) => {
       const next = [...prev, userMsg];
-      const sid = activeSessionIdRef.current;
-      if (sid) {
-        const all = getChatSessions();
-        const sess = all.find((s) => s.id === sid);
-        const needTitle =
-          sess != null && (sess.title === "新对话" || !String(sess.title ?? "").trim());
-        updateChatSession(sid, {
-          messages: next,
-          ...(needTitle ? { title: generateSessionTitle(question) } : {}),
-        });
-      }
+      const all = getChatSessions();
+      const sess = all.find((s) => s.id === sessionIdAtStart);
+      const needTitle =
+        sess != null && (sess.title === "新对话" || !String(sess.title ?? "").trim());
+      updateChatSession(sessionIdAtStart, {
+        messages: next,
+        ...(needTitle ? { title: generateSessionTitle(question) } : {}),
+      });
       return next;
     });
     queueMicrotask(refreshSessionsList);
@@ -979,6 +1218,15 @@ export default function NewFeatureChatPage() {
     let answerAttached = false;
 
     const pushEvent = (ev: RagProcessEvent) => {
+      if (myGenerationId !== currentGenerationIdRef.current) {
+        return "stale" as const;
+      }
+      if (ev.type === "answer_delta" || ev.stage === "answer_delta") {
+        const d = ev.data as Record<string, unknown> | undefined;
+        if (d && d.delta != null) {
+          streamingDraftAccumulatorRef.current += String(d.delta);
+        }
+      }
       streamed.push(ev);
       setStreamingEvents([...streamed]);
       if (ev.type === "error") {
@@ -991,10 +1239,7 @@ export default function NewFeatureChatPage() {
         };
         setMessages((prev) => {
           const next = [...prev, errMsg];
-          const sid = activeSessionIdRef.current;
-          if (sid) {
-            updateChatSession(sid, { messages: next });
-          }
+          updateChatSession(sessionIdAtStart, { messages: next });
           return next;
         });
         queueMicrotask(refreshSessionsList);
@@ -1002,9 +1247,12 @@ export default function NewFeatureChatPage() {
       }
       if (ev.type === "answer" && !answerAttached && ev.data && typeof ev.data === "object") {
         answerAttached = true;
+        inflightAnswerAttachedRef.current = true;
         const d = ev.data as Record<string, unknown>;
-        const ans = String(d.answer ?? "");
-        const model = String(d.model ?? "qwen-plus");
+        const serverAns = String(d.answer ?? "").trim();
+        const streamedAns = streamingDraftAccumulatorRef.current.trim();
+        const finalAnswerText = streamedAns || serverAns;
+        const model = String(d.model ?? DEFAULT_STREAM_MODEL_NAME);
         const rc = Number(d.retrieved_count ?? 0);
         const citations = (Array.isArray(d.citations) ? d.citations : []) as NewRagCitation[];
         // 保留 analysis_delta；排除 answer_delta 以减小落库体积（最终 answer 含 citations）
@@ -1015,13 +1263,13 @@ export default function NewFeatureChatPage() {
             e.type !== "answer" &&
             e.type !== "answer_delta",
         );
-        const normalizedAnswer = normalizeAnswer(ans);
+        const normalizedAnswer = normalizeAnswer(finalAnswerText);
         const normalizedSources = normalizeSources(citations);
         const retrievedCount = Number.isFinite(rc) ? rc : 0;
         const assistantMsg: ChatItem = {
           id: `a_${Date.now()}`,
           role: "assistant",
-          content: ans || "未获取到回答",
+          content: finalAnswerText || serverAns || "未获取到回答",
           createdAt: new Date().toISOString(),
           processEvents: processSnapshot.length > 0 ? processSnapshot : undefined,
           answerCard: {
@@ -1034,10 +1282,7 @@ export default function NewFeatureChatPage() {
         };
         setMessages((prev) => {
           const next = [...prev, assistantMsg];
-          const sid = activeSessionIdRef.current;
-          if (sid) {
-            updateChatSession(sid, { messages: next });
-          }
+          updateChatSession(sessionIdAtStart, { messages: next });
           return next;
         });
         queueMicrotask(refreshSessionsList);
@@ -1065,7 +1310,8 @@ export default function NewFeatureChatPage() {
       const resp = await fetch(`${getApiBaseUrl()}/new-rag/ask-stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({ question, conversation_history }),
+        signal: ac.signal,
       });
       if (!resp.ok) {
         const text = await resp.text();
@@ -1087,8 +1333,10 @@ export default function NewFeatureChatPage() {
         for (const part of parts) {
           const r = consumeNdjsonLine(part);
           if (r === "error") {
-            setLoading(false);
-            setStreamingEvents([]);
+            if (myGenerationId === currentGenerationIdRef.current) {
+              setLoading(false);
+              setStreamingEvents([]);
+            }
             return;
           }
         }
@@ -1096,12 +1344,14 @@ export default function NewFeatureChatPage() {
       if (buffer.trim()) {
         const r = consumeNdjsonLine(buffer);
         if (r === "error") {
-          setLoading(false);
-          setStreamingEvents([]);
+          if (myGenerationId === currentGenerationIdRef.current) {
+            setLoading(false);
+            setStreamingEvents([]);
+          }
           return;
         }
       }
-      if (!answerAttached) {
+      if (!answerAttached && myGenerationId === currentGenerationIdRef.current) {
         const incompleteMsg: ChatItem = {
           id: `a_err_${Date.now()}`,
           role: "assistant",
@@ -1110,32 +1360,39 @@ export default function NewFeatureChatPage() {
         };
         setMessages((prev) => {
           const next = [...prev, incompleteMsg];
-          const sid = activeSessionIdRef.current;
-          if (sid) {
-            updateChatSession(sid, { messages: next });
-          }
+          updateChatSession(sessionIdAtStart, { messages: next });
           return next;
         });
         queueMicrotask(refreshSessionsList);
       }
     } catch (error) {
-      const msg = error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500);
-      const failMsg: ChatItem = {
-        id: `a_err_${Date.now()}`,
-        role: "assistant",
-        content: `调用失败：${msg}`,
-        createdAt: new Date().toISOString(),
-      };
-      setMessages((prev) => {
-        const next = [...prev, failMsg];
-        const sid = activeSessionIdRef.current;
-        if (sid) {
-          updateChatSession(sid, { messages: next });
-        }
-        return next;
-      });
-      queueMicrotask(refreshSessionsList);
+      if (isAbortLikeError(error)) {
+        /* 用户停止或会话切换触发的中止，不展示调用失败 */
+      } else if (myGenerationId === currentGenerationIdRef.current) {
+        const msg = error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500);
+        const failMsg: ChatItem = {
+          id: `a_err_${Date.now()}`,
+          role: "assistant",
+          content: `调用失败：${msg}`,
+          createdAt: new Date().toISOString(),
+        };
+        setMessages((prev) => {
+          const next = [...prev, failMsg];
+          updateChatSession(sessionIdAtStart, { messages: next });
+          return next;
+        });
+        queueMicrotask(refreshSessionsList);
+      }
     } finally {
+      if (abortControllerRef.current === ac) {
+        abortControllerRef.current = null;
+      }
+      if (myGenerationId !== currentGenerationIdRef.current) {
+        return;
+      }
+      generationSessionIdRef.current = null;
+      streamingDraftAccumulatorRef.current = "";
+      inflightAnswerAttachedRef.current = false;
       setLoading(false);
       setStreamingEvents([]);
     }
@@ -1174,6 +1431,7 @@ export default function NewFeatureChatPage() {
                 sessions={sessions}
                 activeSessionId={activeSessionId}
                 loading={loading}
+                loadingInteractionHint={loading ? "切换将停止当前生成" : undefined}
                 onNewSession={handleNewSession}
                 onSelectSession={handleSelectSessionMobile}
                 collapsed={false}
@@ -1195,6 +1453,7 @@ export default function NewFeatureChatPage() {
             sessions={sessions}
             activeSessionId={activeSessionId}
             loading={loading}
+            loadingInteractionHint={loading ? "切换将停止当前生成" : undefined}
             onNewSession={handleNewSession}
             onSelectSession={handleSelectSession}
             collapsed={sessionSidebarCollapsed}
@@ -1206,16 +1465,17 @@ export default function NewFeatureChatPage() {
           <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--app-border)] bg-[var(--app-surface)]/95 px-3 py-2 md:hidden">
             <button
               type="button"
-              disabled={loading}
+              title={loading ? "切换将停止当前生成" : undefined}
               onClick={() => setMobileSessionsOpen(true)}
-              className="shrink-0 rounded-xl border border-[var(--app-border)] bg-white/90 px-3 py-2 text-xs font-medium text-[var(--app-text)] shadow-[var(--app-shadow-sm)] transition hover:bg-[var(--app-surface-muted)] disabled:cursor-not-allowed disabled:opacity-45"
+              className="shrink-0 rounded-xl border border-[var(--app-border)] bg-white/90 px-3 py-2 text-xs font-medium text-[var(--app-text)] shadow-[var(--app-shadow-sm)] transition hover:bg-[var(--app-surface-muted)]"
             >
               历史
             </button>
             <span className="min-w-0 flex-1 text-center text-sm font-semibold text-[var(--app-text)]">对话</span>
             <button
               type="button"
-              disabled={loading || !sessionReady}
+              title={loading ? "切换将停止当前生成" : undefined}
+              disabled={!sessionReady}
               onClick={handleNewSession}
               className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-gradient-to-br from-[var(--app-primary)] to-[var(--app-primary-strong)] px-3 py-2 text-xs font-medium text-white shadow-[var(--app-shadow-sm)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-45"
             >
@@ -1226,29 +1486,31 @@ export default function NewFeatureChatPage() {
 
           <div
             className={cn(
-              "mx-auto flex w-full shrink-0 items-center justify-between gap-4 px-5 py-4 md:px-8",
+              "mx-auto flex min-h-10 w-full shrink-0 items-center justify-end px-5 py-2 md:px-8",
               chatContentMaxClass,
             )}
           >
-            <div className="min-w-0">
-              <h1 className="text-lg font-semibold tracking-tight text-[var(--app-text)]">
-                Qwen + 阿里云知识库
-              </h1>
-              <p className="mt-1 text-xs text-[var(--app-text-muted)]">每次提问先检索知识库，再由 Qwen 生成答案</p>
+            <div
+              className="max-w-full truncate rounded-full border border-[var(--app-border)] bg-[var(--app-surface)]/90 px-2.5 py-0.5 text-[11px] leading-tight text-[var(--app-text-muted)]"
+              title={topStatusBarLabel}
+            >
+              {topStatusBarLabel}
             </div>
-            {lastMeta ? (
-              <div className="shrink-0 rounded-full border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-1.5 text-xs text-[var(--app-text-muted)] shadow-[var(--app-shadow-sm)]">
-                模型：{lastMeta.model} · 检索片段：{lastMeta.retrievedCount}
-              </div>
-            ) : null}
           </div>
 
-          <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto scroll-pb-4">
+          <div
+            ref={messagesScrollRef}
+            onScroll={onMessagesScroll}
+            className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto scroll-pb-4"
+          >
             <div className={cn("mx-auto w-full px-5 pb-4 pt-1 md:px-8", chatContentMaxClass)}>
               <div className="space-y-4 rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)]/90 p-5 shadow-[var(--app-shadow-sm)] backdrop-blur-sm">
                 {messages.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-[var(--app-border)] bg-[var(--app-surface-muted)] p-4 text-sm text-[var(--app-text-muted)]">
-                    {emptyHint}
+                  <div className="space-y-2 rounded-xl border border-dashed border-[var(--app-border)] bg-[var(--app-surface-muted)] p-4">
+                    <p className="text-xs leading-relaxed text-[var(--app-text-muted)]">
+                      输入法律问题，我会先检索知识库，再基于有效法条回答。
+                    </p>
+                    <p className="text-sm text-[var(--app-text-muted)]">{emptyHint}</p>
                   </div>
                 ) : null}
                 {messages.map((m) => {
@@ -1277,7 +1539,7 @@ export default function NewFeatureChatPage() {
                         {assistantWithCard && answerCard ? (
                           <div className="space-y-3">
                             {m.processEvents && m.processEvents.length > 0 ? (
-                              <ProcessTimeline events={m.processEvents} />
+                              <ProcessTimeline events={m.processEvents} defaultOpen={false} />
                             ) : null}
                             <QwenKbAnswerCard
                               answer={answerCard.answer}
@@ -1305,18 +1567,35 @@ export default function NewFeatureChatPage() {
                     </div>
                   );
                 })}
-                {loading ? (
-                  <div className="space-y-2 rounded-[20px] border border-[var(--app-border)] bg-white/85 p-3 shadow-[var(--app-shadow-sm)] backdrop-blur-sm">
-                    {streamingEvents.length === 0 ? (
-                      <p className="text-xs text-[var(--app-text-subtle)]">正在连接流式服务…</p>
-                    ) : null}
-                    <ProcessTimeline events={streamingEvents} />
-                    {answerGenerationLive ? (
-                      <StreamingAnswerDraft
-                        text={streamingAnswerDraft}
-                        pending={!streamingAnswerDraft}
-                      />
-                    ) : null}
+                {loading && !streamHasAnswer ? (
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[var(--app-primary-soft)] text-[var(--app-primary)]">
+                      <Bot className="size-4" />
+                    </div>
+                    <div className={cn("min-w-0 w-full flex-1 space-y-3 text-[var(--app-text)]", assistantColMaxClass)}>
+                      {streamingEvents.length === 0 ? (
+                        <p className="text-xs text-[var(--app-text-subtle)]">正在连接流式服务…</p>
+                      ) : null}
+                      {streamingEvents.length > 0 ? (
+                        <ProcessTimeline events={streamingEvents} defaultOpen={true} />
+                      ) : null}
+                      {streamingAnswerDraft.trim() ? (
+                        <QwenKbAnswerCard
+                          answer={streamingNormalizedAnswer}
+                          sources={streamingKbSources}
+                          question={lastQuestion}
+                          modelName={lastMeta?.model ?? DEFAULT_STREAM_MODEL_NAME}
+                          pending
+                          onRegenerate={() => void send(lastQuestion)}
+                          onCopy={() => {
+                            // reserved for analytics hook
+                          }}
+                          onFeedback={() => {
+                            // reserved for feedback API hook
+                          }}
+                        />
+                      ) : null}
+                    </div>
                   </div>
                 ) : null}
               </div>
@@ -1338,22 +1617,35 @@ export default function NewFeatureChatPage() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
+                    if (loading) return;
                     void send();
                   }
                 }}
               />
               <button
                 type="button"
-                disabled={loading || !input.trim() || !sessionReady}
-                onClick={() => void send()}
-                className="inline-flex h-10 min-w-[5.25rem] shrink-0 items-center justify-center gap-1.5 rounded-full bg-gradient-to-br from-[var(--app-primary)] to-[var(--app-primary-strong)] px-3.5 text-sm font-medium text-white shadow-[var(--app-shadow-sm)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-45"
+                disabled={!loading && (!input.trim() || !sessionReady)}
+                aria-label={loading ? "停止生成" : "发送"}
+                title={loading ? "停止生成" : "发送"}
+                onClick={() => {
+                  if (loading) {
+                    stopGeneration({ persistDraft: true });
+                  } else {
+                    void send();
+                  }
+                }}
+                className={cn(
+                  "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full shadow-[var(--app-shadow-sm)] transition",
+                  loading
+                    ? "border border-[var(--app-border)] bg-[var(--app-surface-muted)] text-[var(--app-text)] hover:bg-[var(--app-surface)]"
+                    : "bg-gradient-to-br from-[var(--app-primary)] to-[var(--app-primary-strong)] text-white hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-45",
+                )}
               >
                 {loading ? (
-                  <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden />
+                  <Square className="size-4 shrink-0 fill-current" aria-hidden />
                 ) : (
                   <Send className="size-4 shrink-0" aria-hidden />
                 )}
-                {loading ? "发送中" : "发送"}
               </button>
             </div>
           </div>
