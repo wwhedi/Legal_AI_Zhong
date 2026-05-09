@@ -11,7 +11,15 @@ export type AuthUser = {
   id: string;
   username: string;
   display_name: string;
+  /** `admin` | `user`；旧会话缺省时按 `user` 处理 */
+  role?: string;
 };
+
+/** 仅允许站内相对路径，防止开放重定向 */
+export function getSafeInternalPath(raw: string | null): string | null {
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return null;
+  return raw;
+}
 
 export async function fetchMe(): Promise<AuthUser | null> {
   const res = await fetch(`${getApiBaseUrl()}/auth/me`, {

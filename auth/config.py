@@ -17,7 +17,7 @@ import logging
 import os
 from functools import lru_cache
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 log = logging.getLogger(__name__)
 
@@ -29,6 +29,18 @@ class AuthUserRecord(BaseModel):
     username: str = Field(..., min_length=1)
     password_hash: str = Field(..., min_length=1)
     display_name: str = Field(default="")
+    #: `admin` | `user`; omitted or unknown values default to `user`
+    role: str = Field(default="user")
+
+    @field_validator("role", mode="before")
+    @classmethod
+    def normalize_role(cls, v: object) -> str:
+        if v is None or v == "":
+            return "user"
+        s = str(v).strip().lower()
+        if s in ("admin", "user"):
+            return s
+        return "user"
 
 
 class AuthSettings(BaseModel):
@@ -66,7 +78,7 @@ def get_auth_settings() -> AuthSettings:
             users.append(AuthUserRecord.model_validate(item))
         except ValidationError as exc:
             raise RuntimeError(
-                f"AUTH_USERS_JSON user at index {i} failed validation ({exc.error_count()} error(s); check id, username, password_hash, display_name)"
+                f"AUTH_USERS_JSON user at index {i} failed validation ({exc.error_count()} error(s); check id, username, password_hash, display_name, role)"
             ) from exc
 
     usernames = [u.username for u in users]

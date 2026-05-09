@@ -47,6 +47,7 @@ def to_public_user(record: AuthUserRecord) -> dict[str, str]:
         "id": record.id,
         "username": record.username,
         "display_name": record.display_name or record.username,
+        "role": record.role,
     }
 
 
@@ -64,4 +65,16 @@ async def get_current_user(
     user = user_record_from_session(request, settings)
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    return user
+
+
+async def require_admin(
+    user: Annotated[AuthUserRecord, Depends(get_current_user)],
+) -> AuthUserRecord:
+    """未登录 401；已登录非 admin 403。"""
+    if user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="仅管理员可访问知识库更新",
+        )
     return user

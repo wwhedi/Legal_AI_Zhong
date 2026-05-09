@@ -5,6 +5,7 @@ import type {
   KBJobSnapshotResponse,
   KBStartJobResponse,
   KBStopJobResponse,
+  KBValidateReportSummaryResponse,
 } from "@/types";
 
 const DEFAULT_BASE_URL = "http://localhost:8000";
@@ -13,6 +14,38 @@ function getBaseUrl() {
   return (
     process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, "") || DEFAULT_BASE_URL
   );
+}
+
+/** Prefer FastAPI `detail` when body is JSON; keep raw body if parse fails. */
+function formatHttpApiError(path: string, status: number, statusText: string, bodyText: string): string {
+  const raw = bodyText.trim();
+  if (!raw) {
+    return `API ${status} ${statusText} for ${path}`;
+  }
+  try {
+    const parsed = JSON.parse(raw) as { detail?: unknown };
+    if (parsed && typeof parsed === "object" && "detail" in parsed) {
+      const d = parsed.detail;
+      if (typeof d === "string") {
+        return `API ${status} ${statusText} for ${path}: ${d}`;
+      }
+      if (Array.isArray(d)) {
+        const msg = d
+          .map((item) => {
+            if (item && typeof item === "object" && "msg" in item) {
+              return String((item as { msg: unknown }).msg);
+            }
+            return JSON.stringify(item);
+          })
+          .join("; ");
+        return `API ${status} ${statusText} for ${path}: ${msg}`;
+      }
+      return `API ${status} ${statusText} for ${path}: ${JSON.stringify(d)}`;
+    }
+  } catch {
+    /* use raw */
+  }
+  return `API ${status} ${statusText} for ${path}: ${raw}`;
 }
 
 async function request<T>(
@@ -30,17 +63,14 @@ async function request<T>(
 
   const resp = await fetch(url, {
     ...init,
+    credentials: "include",
     headers,
     body,
   });
 
   if (!resp.ok) {
     const text = await resp.text().catch(() => "");
-    throw new Error(
-      `API ${resp.status} ${resp.statusText} for ${path}${
-        text ? `: ${text}` : ""
-      }`,
-    );
+    throw new Error(formatHttpApiError(path, resp.status, resp.statusText, text));
   }
 
   return (await resp.json()) as T;
@@ -94,4 +124,17 @@ export async function listKBUpdateJobs(
     method: "GET",
     signal: options?.signal,
   });
+}
+
+export async function getKBUpdateValidateReportSummary(
+  jobId: string,
+  options?: { signal?: AbortSignal },
+): Promise<KBValidateReportSummaryResponse> {
+  return request<KBValidateReportSummaryResponse>(
+    `/kb-update/jobs/${jobId}/validate-report-summary`,
+    {
+      method: "GET",
+      signal: options?.signal,
+    },
+  );
 }

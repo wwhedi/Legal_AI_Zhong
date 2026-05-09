@@ -12,7 +12,7 @@ export default async function JobConfigPage({
   const lawTypeParam = typeof sp.lawType === "string" ? sp.lawType : null;
   const storageRoot = typeof sp.storageRoot === "string" ? sp.storageRoot : "";
   const steps = typeof sp.steps === "string" ? sp.steps : "";
-  const runMode = typeof sp.runMode === "string" ? sp.runMode : "step_run";
+  const runMode = typeof sp.runMode === "string" ? sp.runMode : "full_run";
   return (
     <Suspense
       fallback={

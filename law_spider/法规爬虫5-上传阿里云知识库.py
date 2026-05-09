@@ -3,14 +3,38 @@ import inspect
 import json
 import os
 import re
+import sys
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
+_LEGAL_AI_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _LEGAL_AI_ROOT not in sys.path:
+    sys.path.insert(0, _LEGAL_AI_ROOT)
+
+from kb_upload_store.db import get_kb_upload_db_path, init_kb_upload_db
+from kb_upload_store.service import (
+    classify_upload_skip,
+    compute_law_id,
+    compute_version_hash,
+    extract_bailian_job_id,
+    fetch_record,
+    law_name_from_row,
+    update_after_index_error,
+    update_after_index_submitted,
+    update_after_parse_failure,
+    update_after_parse_success_terminal,
+    update_record_index_finish,
+    update_record_index_timeout,
+    update_record_index_unknown,
+    update_records_index_running,
+    upsert_after_add_file,
+    upsert_after_upload_failure,
+)
+
 # 避免 Windows/GBK 控制台在打印生僻字时抛出 UnicodeEncodeError
 try:
-    import sys
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 except Exception:
@@ -402,6 +426,114 @@ def submit_index_add_documents_job(
     return normalize_openapi_response(resp)
 
 
+def _submit_index_add_documents_job_response_succeeded(job_resp: Dict[str, Any]) -> bool:
+    """
+    判断 SubmitIndexAddDocumentsJob 业务是否成功。
+    百炼常见形态：HTTP 200 + Code=Success + Message=success；不可把「存在 Code 字符串」一律当失败。
+    """
+    meta = _get_case_insensitive(job_resp, "_meta", {}) or {}
+    http_raw = _get_case_insensitive(meta, "status_code", None)
+    if http_raw is not None:
+        try:
+            hi = int(http_raw)
+            if hi < 200 or hi >= 300:
+                return False
+        except (TypeError, ValueError):
+            pass
+
+    if _get_case_insensitive(job_resp, "Success", None) is True:
+        return True
+    data = _get_case_insensitive(job_resp, "data", None)
+    if isinstance(data, dict) and _get_case_insensitive(data, "Success", None) is True:
+        return True
+
+    code = (
+        _get_case_insensitive(job_resp, "Code", "")
+        or _get_case_insensitive(meta, "code", "")
+        or ""
+    )
+    code_s = str(code).strip()
+    if code_s:
+        return code_s.casefold() in ("success", "ok", "200")
+
+    msg = str(
+        _get_case_insensitive(job_resp, "Message", "")
+        or _get_case_insensitive(meta, "message", "")
+        or ""
+    ).strip().casefold()
+    if msg == "success":
+        return True
+
+    # 部分版本仅返回 data 中的任务 Id，无顶层 Code
+    if extract_bailian_job_id(job_resp):
+        return True
+
+    return False
+
+
+def get_index_job_status(client, workspace_id: str, index_id: str, job_id: str) -> Dict[str, Any]:
+    """调用百炼 GetIndexJobStatus；返回 normalize_openapi_response 字典。"""
+    try:
+        from alibabacloud_bailian20231229 import models as bailian_models
+        from alibabacloud_tea_util import models as util_models
+    except Exception as e:
+        raise RuntimeError(f"SDK模型导入失败：{e}")
+
+    if not hasattr(client, "get_index_job_status_with_options"):
+        raise RuntimeError(
+            "SDK 缺少 get_index_job_status_with_options，请升级：pip install -U alibabacloud-bailian20231229"
+        )
+
+    request = bailian_models.GetIndexJobStatusRequest()
+    try:
+        request.index_id = index_id
+        request.job_id = job_id
+    except Exception:
+        for key in ("index_id", "indexId"):
+            try:
+                setattr(request, key, index_id)
+            except Exception:
+                pass
+        for key in ("job_id", "jobId"):
+            try:
+                setattr(request, key, job_id)
+            except Exception:
+                pass
+
+    runtime = util_models.RuntimeOptions()
+    try:
+        method = client.get_index_job_status_with_options
+        sig = inspect.signature(method)
+        kwargs: Dict[str, Any] = {}
+        for name, p in sig.parameters.items():
+            n = name.lower()
+            if "workspace" in n:
+                kwargs[name] = workspace_id
+            elif "request" in n:
+                kwargs[name] = request
+            elif n == "headers":
+                kwargs[name] = {}
+            elif n == "runtime":
+                kwargs[name] = runtime
+            elif p.default is inspect._empty:
+                raise RuntimeError(f"get_index_job_status_with_options存在未知必填参数：{name}")
+        resp = method(**kwargs)
+        return normalize_openapi_response(resp)
+    except Exception as e:
+        attempts = [
+            lambda: client.get_index_job_status_with_options(workspace_id, request, {}, runtime),
+        ]
+        last_err = e
+        for call in attempts:
+            try:
+                resp = call()
+                return normalize_openapi_response(resp)
+            except Exception as ee:
+                last_err = ee
+                continue
+        raise RuntimeError(f"get_index_job_status_with_options调用失败：{last_err}")
+
+
 def resolve_clean_output_paths(base_path: str, law_type: str) -> Dict[str, str]:
     """
     与法规爬虫4保持一致，兼容两种 base_path 传法：
@@ -465,6 +597,39 @@ def load_upload_files_from_master(master_path: str) -> List[str]:
     return files
 
 
+def load_upload_entries_from_master(master_path: str) -> List[Tuple[str, Dict[str, Any]]]:
+    """
+    读取 law_master.jsonl，返回 (upload_file_path, 行 JSON 对象) 列表，路径存在且去重后按路径排序。
+    供 law_id / version_hash 幂等与上传报告使用。
+    """
+    by_path: Dict[str, Dict[str, Any]] = {}
+    if not os.path.isfile(master_path):
+        raise RuntimeError(
+            f"未找到清洗主清单文件：{master_path}\n"
+            "为避免误上传历史残留文件，已禁止目录扫描回退。\n"
+            "请先运行 法规爬虫4-清洗与知识库导出.py 生成 law_master.jsonl 后重试。"
+        )
+    with open(master_path, "r", encoding="utf-8") as f:
+        for raw in f:
+            line = raw.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except Exception:
+                continue
+            p = str(row.get("upload_file_path", "")).strip()
+            if p and os.path.isfile(p):
+                by_path[p] = row
+    if not by_path:
+        raise RuntimeError(
+            f"清洗主清单为空或无有效 upload_file_path：{master_path}\n"
+            "为避免误上传非最终清洗文件，已禁止目录扫描回退。\n"
+            "请重新运行 法规爬虫4-清洗与知识库导出.py 后重试。"
+        )
+    return [(path, by_path[path]) for path in sorted(by_path.keys())]
+
+
 def upload_cleaned_files_to_bailian(
     upload_dir: str,
     workspace_id: str,
@@ -473,11 +638,21 @@ def upload_cleaned_files_to_bailian(
     knowledge_base_name: str = "",
     poll_interval_sec: int = 15,
     poll_timeout_sec: int = 7200,
-    file_paths: List[str] = None,
+    file_paths: Optional[List[str]] = None,
     max_retry_per_file: int = 1,
+    file_master_entries: Optional[List[Tuple[str, Dict[str, Any]]]] = None,
+    upload_records_db_path: Optional[str] = None,
+    will_submit_index: bool = False,
 ) -> Dict[str, Any]:
     client = create_bailian_client()
     effective_category_id = category_id
+    use_store = bool(upload_records_db_path and file_master_entries)
+    path_to_row: Dict[str, Dict[str, Any]] = {}
+    skipped_records: List[Dict[str, Any]] = []
+    if use_store:
+        init_kb_upload_db(upload_records_db_path)
+        path_to_row = {p: dict(r) for p, r in file_master_entries}
+
     if file_paths is not None:
         files = [p for p in file_paths if os.path.isfile(p)]
     else:
@@ -487,19 +662,102 @@ def upload_cleaned_files_to_bailian(
             if os.path.isfile(os.path.join(upload_dir, fn))
         ]
     files.sort()
+    total_master_files = len(file_master_entries) if file_master_entries else len(files)
     if not files:
-        return {"uploaded": 0, "parse_success": 0, "failed": 0, "details": []}
+        return {
+            "uploaded": 0,
+            "parse_success": 0,
+            "failed": 0,
+            "details": [],
+            "uploaded_file_ids": [],
+            "total_master_files": total_master_files,
+            "uploaded_count": 0,
+            "skipped_count": 0,
+            "failed_count": 0,
+            "skipped_records": [],
+            "reused_for_index_count": 0,
+            "upload_records_db_path": upload_records_db_path or "",
+        }
 
     details: List[Dict[str, Any]] = []
     uploaded = 0
     parse_success = 0
     failed = 0
+    reused_for_index_count = 0
     uploaded_file_ids: List[str] = []
     pending_parse_indices: List[int] = []
 
     for idx, file_path in enumerate(files, start=1):
         file_name = os.path.basename(file_path)
         print(f"[{_now()}] ({idx}/{len(files)}) 上传开始：{file_name}")
+        master_row: Dict[str, Any] = path_to_row.get(file_path, {}) if use_store else {}
+        law_id = ""
+        version_hash = ""
+        if use_store:
+            law_id = compute_law_id(master_row, file_path)
+            version_hash = compute_version_hash(master_row, file_path)
+            rec = fetch_record(law_id, version_hash, db_path=upload_records_db_path)
+            skip_mode, reuse_fid = classify_upload_skip(rec, require_index_submission=will_submit_index)
+            if skip_mode == "full_skip":
+                if rec and str(rec["upload_status"] or "").strip() == "INDEX_SUBMITTED" and not str(
+                    rec["bailian_job_id"] or ""
+                ).strip():
+                    print(
+                        f"[{_now()}] 提示：{file_name}（law_id={law_id}）已为 INDEX_SUBMITTED 但 bailian_job_id 为空，"
+                        "本次不执行 AddFile / SubmitIndexAddDocumentsJob。请人工核对百炼任务或在测试环境修正/删除对应 "
+                        "kb_upload_records 行后重试；脚本不会自动重传。"
+                    )
+                print(f"[{_now()}] 幂等跳过（已存在同 law_id+version_hash 且状态为终态）：{file_name} law_id={law_id}")
+                skip_entry: Dict[str, Any] = {
+                    "law_id": law_id,
+                    "version_hash": version_hash,
+                    "law_name": law_name_from_row(master_row),
+                    "export_file_path": file_path,
+                    "upload_status": str(rec["upload_status"]) if rec else "",
+                    "bailian_file_id": str(rec["bailian_file_id"] or "") if rec else "",
+                    "reason": "idempotent_skip",
+                }
+                skipped_records.append(skip_entry)
+                details.append(
+                    {
+                        "file_name": file_name,
+                        "file_path": file_path,
+                        "knowledge_base_name": knowledge_base_name,
+                        "workspace_id": workspace_id,
+                        "category_id": effective_category_id,
+                        "parser": parser,
+                        "skipped": True,
+                        "law_id": law_id,
+                        "version_hash": version_hash,
+                        "idempotent_skip": True,
+                    }
+                )
+                continue
+            if skip_mode == "reuse_file" and reuse_fid:
+                print(
+                    f"[{_now()}] 复用已有 bailian_file_id 参与索引（跳过重复 AddFile）：{file_name} "
+                    f"law_id={law_id} file_id={reuse_fid}"
+                )
+                reused_for_index_count += 1
+                uploaded_file_ids.append(reuse_fid)
+                details.append(
+                    {
+                        "file_name": file_name,
+                        "file_path": file_path,
+                        "knowledge_base_name": knowledge_base_name,
+                        "workspace_id": workspace_id,
+                        "category_id": effective_category_id,
+                        "parser": parser,
+                        "file_id": reuse_fid,
+                        "success": True,
+                        "parse_status": "PARSE_SUCCESS",
+                        "reuse_for_index": True,
+                        "law_id": law_id,
+                        "version_hash": version_hash,
+                    }
+                )
+                continue
+
         item: Dict[str, Any] = {
             "file_name": file_name,
             "file_path": file_path,
@@ -508,6 +766,9 @@ def upload_cleaned_files_to_bailian(
             "category_id": effective_category_id,
             "parser": parser,
         }
+        if use_store:
+            item["law_id"] = law_id
+            item["version_hash"] = version_hash
         upload_ok = False
         last_upload_error = ""
         for attempt in range(max_retry_per_file + 1):
@@ -560,6 +821,18 @@ def upload_cleaned_files_to_bailian(
                 item["lease_id"] = lease_id
                 item["file_id"] = file_id
                 uploaded_file_ids.append(file_id)
+                if use_store:
+                    try:
+                        upsert_after_add_file(
+                            law_id=law_id,
+                            law_name=law_name_from_row(master_row),
+                            version_hash=version_hash,
+                            export_file_path=file_path,
+                            bailian_file_id=file_id,
+                            db_path=upload_records_db_path,
+                        )
+                    except Exception as db_exc:
+                        print(f"[{_now()}] 写入本地上传记录失败（不影响百炼上传）：{db_exc}")
                 item["upload_attempts"] = attempt + 1
                 # 上传阶段成功后，进入统一轮询队列（避免每个文件串行等待解析）。
                 item["success"] = None
@@ -581,6 +854,18 @@ def upload_cleaned_files_to_bailian(
                 item["error"] = last_upload_error
                 item["upload_attempts"] = attempt + 1
                 print(f"[{_now()}] 上传失败：{file_name}，错误：{e}")
+                if use_store and law_id and version_hash:
+                    try:
+                        upsert_after_upload_failure(
+                            law_id=law_id,
+                            law_name=law_name_from_row(master_row),
+                            version_hash=version_hash,
+                            export_file_path=file_path,
+                            message=last_upload_error,
+                            db_path=upload_records_db_path,
+                        )
+                    except Exception as db_exc:
+                        print(f"[{_now()}] 更新本地上传记录失败：{db_exc}")
         details.append(item)
         if upload_ok and item.get("success") is None and item.get("file_id"):
             pending_parse_indices.append(len(details) - 1)
@@ -603,6 +888,16 @@ def upload_cleaned_files_to_bailian(
                 item["error"] = f"解析超时（>{poll_timeout_sec}s），最后状态={item['parse_status']}"
                 failed += 1
                 print(f"[{_now()}] 解析超时：{file_name} -> {file_id}，最后状态={item['parse_status']}")
+                if use_store and item.get("law_id") and item.get("version_hash"):
+                    try:
+                        update_after_parse_failure(
+                            law_id=str(item["law_id"]),
+                            version_hash=str(item["version_hash"]),
+                            message=str(item.get("error") or "TIMEOUT"),
+                            db_path=upload_records_db_path,
+                        )
+                    except Exception as db_exc:
+                        print(f"[{_now()}] 更新本地上传记录失败：{db_exc}")
                 done_this_round.append(idx)
                 continue
             try:
@@ -617,6 +912,16 @@ def upload_cleaned_files_to_bailian(
                     item["success"] = True
                     parse_success += 1
                     print(f"[{_now()}] 解析完成：{file_name} -> {file_id}")
+                    if use_store and item.get("law_id") and item.get("version_hash"):
+                        try:
+                            if not will_submit_index:
+                                update_after_parse_success_terminal(
+                                    law_id=str(item["law_id"]),
+                                    version_hash=str(item["version_hash"]),
+                                    db_path=upload_records_db_path,
+                                )
+                        except Exception as db_exc:
+                            print(f"[{_now()}] 更新本地上传记录失败：{db_exc}")
                     done_this_round.append(idx)
                     continue
                 if status in {"PARSE_FAILED", "FAILED"}:
@@ -633,6 +938,16 @@ def upload_cleaned_files_to_bailian(
                         item["error"] = f"解析失败，状态={status}"
                         failed += 1
                         print(f"[{_now()}] 解析失败：{file_name} -> {file_id}，状态={status}")
+                        if use_store and item.get("law_id") and item.get("version_hash"):
+                            try:
+                                update_after_parse_failure(
+                                    law_id=str(item["law_id"]),
+                                    version_hash=str(item["version_hash"]),
+                                    message=str(item.get("error") or status),
+                                    db_path=upload_records_db_path,
+                                )
+                            except Exception as db_exc:
+                                print(f"[{_now()}] 更新本地上传记录失败：{db_exc}")
                         done_this_round.append(idx)
                     continue
             except Exception as e:
@@ -674,12 +989,274 @@ def upload_cleaned_files_to_bailian(
         "failed_details": failed_details,
         "uploaded_file_ids": uploaded_file_ids,
         "details": details,
+        "total_master_files": total_master_files,
+        "uploaded_count": uploaded,
+        "skipped_count": len(skipped_records),
+        "failed_count": failed,
+        "skipped_records": skipped_records,
+        "reused_for_index_count": reused_for_index_count,
+        "upload_records_db_path": upload_records_db_path or "",
     }
 
 
 def is_category_not_found_error(err: Exception) -> bool:
     msg = str(err)
     return ("InvalidParameter" in msg) and ("category_id" in msg or "category" in msg) and ("Cant find out category" in msg)
+
+
+def _index_success_batch_pairs(summary: Dict[str, Any]) -> List[Tuple[str, str]]:
+    out: List[Tuple[str, str]] = []
+    for it in summary.get("details", []):
+        if it.get("skipped") and not it.get("reuse_for_index"):
+            continue
+        if it.get("success") is not True:
+            continue
+        lid = it.get("law_id")
+        vh = it.get("version_hash")
+        if lid and vh:
+            out.append((str(lid), str(vh)))
+    return out
+
+
+def _doc_primary_id(doc: Dict[str, Any]) -> str:
+    for key in ("DocId", "FileId", "Id", "doc_id", "file_id"):
+        v = _get_case_insensitive(doc, key, "")
+        if str(v).strip():
+            return str(v).strip()
+    return ""
+
+
+def _apply_index_job_completed_to_records(
+    summary: Dict[str, Any],
+    upload_records_db_path: str,
+    documents: List[Dict[str, Any]],
+) -> None:
+    by_fid: Dict[str, Dict[str, Any]] = {}
+    for it in summary.get("details", []):
+        if it.get("success") is not True:
+            continue
+        if it.get("skipped") and not it.get("reuse_for_index"):
+            continue
+        fid = str(it.get("file_id", "")).strip()
+        lid = it.get("law_id")
+        vh = it.get("version_hash")
+        if fid and lid and vh:
+            by_fid[fid] = it
+    seen: set[str] = set()
+    for raw in documents:
+        doc = raw if isinstance(raw, dict) else model_to_dict(raw)
+        did = _doc_primary_id(doc)
+        if not did or did not in by_fid:
+            continue
+        seen.add(did)
+        it = by_fid[did]
+        lid_s, vh_s = str(it["law_id"]), str(it["version_hash"])
+        st = _get_case_insensitive(doc, "status", "") or _get_case_insensitive(doc, "Status", "")
+        stu = str(st).strip().upper()
+        msg = str(
+            _get_case_insensitive(doc, "message", "") or _get_case_insensitive(doc, "Message", "") or ""
+        )
+        try:
+            if stu == "INSERT_ERROR":
+                update_after_index_error(
+                    law_id=lid_s,
+                    version_hash=vh_s,
+                    message=msg or "INSERT_ERROR",
+                    index_status="INSERT_ERROR",
+                    db_path=upload_records_db_path,
+                )
+            elif stu in ("FINISH", "SUCCESS", "COMPLETED"):
+                update_record_index_finish(law_id=lid_s, version_hash=vh_s, db_path=upload_records_db_path)
+            elif stu in ("RUNNING", "PENDING"):
+                pass
+            else:
+                update_record_index_unknown(
+                    law_id=lid_s,
+                    version_hash=vh_s,
+                    message=(f"未知文档状态：{stu}" + (f"；{msg}" if msg else ""))[:4000],
+                    db_path=upload_records_db_path,
+                )
+        except Exception as ex:
+            print(f"[{_now()}] 回写 kb_upload_records（文档级）失败：{ex}")
+    for fid, it in by_fid.items():
+        if fid in seen:
+            continue
+        try:
+            update_record_index_finish(
+                law_id=str(it["law_id"]), version_hash=str(it["version_hash"]), db_path=upload_records_db_path
+            )
+        except Exception as ex:
+            print(f"[{_now()}] 回写 kb_upload_records（任务完成但无文档条目）失败：{ex}")
+
+
+def poll_index_job_status_close_loop(
+    client,
+    workspace_id: str,
+    index_id: str,
+    job_id: str,
+    summary: Dict[str, Any],
+    upload_records_db_path: str,
+    *,
+    poll_interval_sec: int,
+    poll_timeout_sec: int,
+) -> None:
+    pairs = _index_success_batch_pairs(summary)
+    summary["index_job_poll_started_at"] = _now()
+    summary["index_job_poll_attempts"] = 0
+    summary["index_job_poll_last_error"] = ""
+    summary["index_job_final_status"] = ""
+    summary["index_job_status_raw"] = None
+
+    deadline = time.time() + max(30, int(poll_timeout_sec))
+    interval = max(3, int(poll_interval_sec))
+
+    while time.time() < deadline:
+        summary["index_job_poll_attempts"] = int(summary.get("index_job_poll_attempts") or 0) + 1
+        try:
+            norm = get_index_job_status(client, workspace_id, index_id, job_id)
+            snippet = json.dumps(norm, ensure_ascii=False)[:2000]
+            summary["index_job_status_raw"] = snippet
+
+            succ = _get_case_insensitive(norm, "success", None)
+            if succ is False:
+                err = str(
+                    _get_case_insensitive(norm, "message", "")
+                    or _get_case_insensitive(norm, "Message", "")
+                    or "GetIndexJobStatus Success=false"
+                )
+                summary["index_job_poll_last_error"] = err[:2000]
+                time.sleep(interval)
+                continue
+
+            d = _get_case_insensitive(norm, "data", {}) or {}
+            if not isinstance(d, dict):
+                d = model_to_dict(d)
+            jst = str(
+                _get_case_insensitive(d, "Status", "") or _get_case_insensitive(d, "status", "") or ""
+            ).strip().upper()
+            docs_raw = d.get("Documents") or d.get("documents") or []
+            docs_list: List[Dict[str, Any]] = []
+            if isinstance(docs_raw, list):
+                for x in docs_raw:
+                    docs_list.append(x if isinstance(x, dict) else model_to_dict(x))
+
+            if jst in ("PENDING", "RUNNING", "PROCESSING", ""):
+                if pairs:
+                    try:
+                        update_records_index_running(pairs, db_path=upload_records_db_path)
+                    except Exception as ex:
+                        print(f"[{_now()}] 更新索引任务 RUNNING 状态失败：{ex}")
+                time.sleep(interval)
+                continue
+
+            if jst in ("FAILED", "ERROR"):
+                msg = str(
+                    _get_case_insensitive(norm, "message", "")
+                    or _get_case_insensitive(norm, "Message", "")
+                    or _get_case_insensitive(d, "Message", "")
+                    or jst
+                )
+                for lid, vh in pairs:
+                    try:
+                        update_after_index_error(
+                            law_id=lid,
+                            version_hash=vh,
+                            message=msg[:4000],
+                            index_status="FAILED",
+                            db_path=upload_records_db_path,
+                        )
+                    except Exception as ex:
+                        print(f"[{_now()}] 回写索引任务 FAILED 失败：{ex}")
+                summary["index_job_poll_status"] = "TERMINAL_FAILED"
+                summary["index_job_final_status"] = jst
+                summary["index_job_poll_finished_at"] = _now()
+                summary["index_job_poll_last_error"] = msg[:2000]
+                return
+
+            if jst in ("COMPLETED", "SUCCESS", "FINISH"):
+                _apply_index_job_completed_to_records(summary, upload_records_db_path, docs_list)
+                summary["index_job_poll_status"] = "TERMINAL_OK"
+                summary["index_job_final_status"] = jst
+                summary["index_job_poll_finished_at"] = _now()
+                summary["index_job_poll_last_error"] = ""
+                return
+
+            summary["index_job_poll_last_error"] = f"unknown job status: {jst}"
+            time.sleep(interval)
+        except RuntimeError as e:
+            msg = str(e)
+            if "get_index_job_status" in msg or "SDK" in msg or "缺少" in msg:
+                summary["index_job_poll_status"] = "SDK_UNSUPPORTED_OR_ERROR"
+                summary["index_job_poll_last_error"] = msg[:2000]
+                summary["index_job_poll_finished_at"] = _now()
+                return
+            summary["index_job_poll_last_error"] = msg[:2000]
+            time.sleep(interval)
+        except Exception as e:
+            summary["index_job_poll_last_error"] = str(e)[:2000]
+            time.sleep(interval)
+
+    msg = (
+        f"GetIndexJobStatus polling timeout after {poll_timeout_sec}s "
+        f"(attempts={summary.get('index_job_poll_attempts')})"
+    )
+    for lid, vh in pairs:
+        try:
+            update_record_index_timeout(
+                law_id=lid, version_hash=vh, message=msg[:4000], db_path=upload_records_db_path
+            )
+        except Exception as ex:
+            print(f"[{_now()}] TIMEOUT 回写 kb_upload_records 失败：{ex}")
+    summary["index_job_poll_status"] = "TIMEOUT"
+    summary["index_job_final_status"] = "TIMEOUT"
+    summary["index_job_poll_finished_at"] = _now()
+
+
+def _apply_index_outcome_to_kb_upload_records(
+    summary: Dict[str, Any],
+    upload_records_db_path: str,
+    job_resp: Optional[Dict[str, Any]],
+    error_message: Optional[str],
+) -> None:
+    """将 SubmitIndexAddDocumentsJob 结果写回 kb_upload_records（仅本地上传记录表）。"""
+    if not str(upload_records_db_path or "").strip():
+        return
+    job_id = ""
+    if not error_message and isinstance(job_resp, dict):
+        job_id = extract_bailian_job_id(job_resp)
+    err = (error_message or "").strip()
+    for it in summary.get("details", []):
+        if it.get("skipped"):
+            continue
+        lid = it.get("law_id")
+        vh = it.get("version_hash")
+        if not lid or not vh:
+            continue
+        if it.get("success") is not True:
+            continue
+        try:
+            if err:
+                update_after_index_error(
+                    law_id=str(lid),
+                    version_hash=str(vh),
+                    message=err,
+                    db_path=upload_records_db_path,
+                )
+            else:
+                update_after_index_submitted(
+                    law_id=str(lid),
+                    version_hash=str(vh),
+                    bailian_job_id=job_id,
+                    db_path=upload_records_db_path,
+                )
+        except Exception as ex:
+            print(f"[{_now()}] 更新本地上传记录（索引阶段）失败：{ex}")
+
+
+def _parse_bailian_bool_default_true(raw: str) -> bool:
+    """未设置或 true/1/yes/on 为 True；false/0/no/off 为 False。"""
+    r = (raw or "true").strip().lower()
+    return r not in ("0", "false", "no", "off")
 
 
 def main():
@@ -794,10 +1371,21 @@ def main():
     # 若用户未配置 separator，默认使用“来源信息锚点”切分。
     if chunk_mode == "regex" and not chunk_separator:
         chunk_separator = r"(?=【来源信息】)"
+    if chunk_separator:
+        # 全角空格 / NBSP / 误写「【 来源信息」均会导致锚点与正文不一致
+        chunk_separator = chunk_separator.replace("\u3000", "").replace("\xa0", "")
+        chunk_separator = chunk_separator.replace("(?=【 来源信息】)", r"(?=【来源信息】)")
+        chunk_separator = re.sub(r"【\s+来源信息", "【来源信息", chunk_separator)
     if env_chunk_separator:
-        print(f"[{_now()}] 使用.env中的Separator正则：{chunk_separator}")
+        print(
+            f"[{_now()}] 使用.env中的Separator正则：separator={repr(chunk_separator)} "
+            f"（提交百炼参数与此一致）"
+        )
     else:
-        print(f"[{_now()}] 未配置Separator，已按法规爬虫4格式默认使用：{chunk_separator}")
+        print(
+            f"[{_now()}] 未配置Separator，默认：separator={repr(chunk_separator)} "
+            f"（提交百炼参数与此一致）"
+        )
     try:
         chunk_size = int(env_chunk_size) if env_chunk_size else 0
     except ValueError:
@@ -819,6 +1407,20 @@ def main():
         index_job_retry_interval = max(3, int(env_index_job_retry_interval)) if env_index_job_retry_interval else 30
     except ValueError:
         index_job_retry_interval = 30
+
+    env_index_poll_enabled = (os.getenv("BAILIAN_INDEX_JOB_POLL_ENABLED", "true") or "").strip()
+    env_index_poll_interval_sec = (os.getenv("BAILIAN_INDEX_JOB_POLL_INTERVAL_SECONDS", "10") or "").strip()
+    env_index_poll_timeout_sec = (os.getenv("BAILIAN_INDEX_JOB_POLL_TIMEOUT_SECONDS", "1800") or "").strip()
+    index_poll_enabled = _parse_bailian_bool_default_true(env_index_poll_enabled)
+    try:
+        index_poll_interval_sec = max(3, int(env_index_poll_interval_sec or "10"))
+    except ValueError:
+        index_poll_interval_sec = 10
+    try:
+        index_poll_timeout_sec = max(30, int(env_index_poll_timeout_sec or "1800"))
+    except ValueError:
+        index_poll_timeout_sec = 1800
+
     # 关键：SubmitIndexAddDocumentsJob 未传 chunk_size 时默认 500，可能把“单行切片”再次强制切断。
     # 对于法规爬虫4的一行一条格式，regex 模式下默认提升为 6000，尽量保持“一行一个切片”。
     if chunk_mode == "regex" and chunk_separator and chunk_size <= 0:
@@ -839,17 +1441,21 @@ def main():
     upload_dir = paths["upload_dir"]
     master_path = paths["master_path"]
     try:
-        upload_files_from_master = load_upload_files_from_master(master_path)
+        upload_entries = load_upload_entries_from_master(master_path)
     except RuntimeError as e:
         print(f"[{_now()}] {e}")
         return
+
+    upload_files_from_master = [p for p, _ in upload_entries]
+    upload_records_db_path = str(init_kb_upload_db(get_kb_upload_db_path()))
+    will_submit_index = bool(str(index_id or "").strip())
 
     if not os.path.isdir(upload_dir):
         print(f"未找到清洗上传目录：{upload_dir}")
         print("请先运行 法规爬虫4-清洗与知识库导出.py 生成清洗上传文件。")
         return
     print(f"[{_now()}] 使用 law_master.jsonl 精确上传：{master_path}")
-    print(f"[{_now()}] 本次将上传文件数：{len(upload_files_from_master)}")
+    print(f"[{_now()}] 主清单文件数（去重后）：{len(upload_files_from_master)}；本地上传记录库：{upload_records_db_path}")
 
     # Optional: update index name before uploading files
     if index_id and knowledge_base_name:
@@ -879,6 +1485,9 @@ def main():
             poll_timeout_sec=poll_timeout,
             file_paths=upload_files_from_master,
             max_retry_per_file=retry_times,
+            file_master_entries=upload_entries,
+            upload_records_db_path=upload_records_db_path,
+            will_submit_index=will_submit_index,
         )
     except Exception as e:
         # 容错：当配置的category_id不存在时，自动回退到default重试
@@ -894,9 +1503,20 @@ def main():
                 poll_timeout_sec=poll_timeout,
                 file_paths=upload_files_from_master,
                 max_retry_per_file=retry_times,
+                file_master_entries=upload_entries,
+                upload_records_db_path=upload_records_db_path,
+                will_submit_index=will_submit_index,
             )
         else:
             raise
+
+    if int(summary.get("skipped_count") or 0) > 0:
+        print(f"[{_now()}] 幂等跳过文件数：{summary.get('skipped_count')}")
+    if int(summary.get("reused_for_index_count") or 0) > 0:
+        print(f"[{_now()}] 复用 file_id 参与索引（未重复 AddFile）：{summary.get('reused_for_index_count')}")
+
+    summary.setdefault("index_job_poll_enabled", False)
+    summary.setdefault("index_job_poll_status", "NOT_APPLICABLE")
 
     # 可选：按示例接口将已上传文件提交到知识库（Index）
     if index_id and summary.get("uploaded_file_ids"):
@@ -906,23 +1526,33 @@ def main():
             if chunk_mode:
                 print(
                     f"[{_now()}] 提交知识库切片参数：chunk_mode={chunk_mode}, "
-                    f"separator={chunk_separator or '<empty>'}, chunk_size={chunk_size or '<default>'}, "
+                    f"separator={repr(chunk_separator)}, chunk_size={chunk_size or '<default>'}, "
                     f"overlap_size={overlap_size if env_overlap_size else '<default>'}"
                 )
             summary["index_id"] = index_id
             last_job_resp = None
-            for attempt in range(index_job_retry + 1):
-                job_resp = submit_index_add_documents_job(
-                    client_for_index_job,
-                    workspace_id=workspace_id,
-                    index_id=index_id,
-                    file_ids=summary.get("uploaded_file_ids", []),
-                    source_type=source_type,
-                    chunk_mode=chunk_mode,
-                    separator=chunk_separator,
-                    chunk_size=chunk_size,
-                    overlap_size=overlap_size,
-                )
+            for submit_attempt in range(index_job_retry + 1):
+                try:
+                    job_resp = submit_index_add_documents_job(
+                        client_for_index_job,
+                        workspace_id=workspace_id,
+                        index_id=index_id,
+                        file_ids=summary.get("uploaded_file_ids", []),
+                        source_type=source_type,
+                        chunk_mode=chunk_mode,
+                        separator=chunk_separator,
+                        chunk_size=chunk_size,
+                        overlap_size=overlap_size,
+                    )
+                except Exception as call_exc:
+                    if submit_attempt < index_job_retry:
+                        print(
+                            f"[{_now()}] SubmitIndexAddDocumentsJob 调用异常，{index_job_retry_interval}s 后重试 "
+                            f"({submit_attempt + 1}/{index_job_retry + 1})：{call_exc}"
+                        )
+                        time.sleep(index_job_retry_interval)
+                        continue
+                    raise
                 last_job_resp = job_resp
                 summary["submit_index_add_documents_job"] = job_resp
                 meta = _get_case_insensitive(job_resp, "_meta", {}) or {}
@@ -933,32 +1563,128 @@ def main():
                     f"[{_now()}] 已调用SubmitIndexAddDocumentsJob：index_id={index_id}, "
                     f"code={code}, status={status}, message={message}"
                 )
-                # Bailian OpenAPI 有时会把业务错误放在 body 里，但 HTTP status_code 仍是 200。
-                # 这里以 Code 是否存在且非空/Status>=400 作为失败信号。
-                is_failed = False
-                try:
-                    if str(code).strip():
-                        # 只要返回 Code 且不是 Success=true 的形态，通常就是失败
-                        is_failed = True
-                except Exception:
-                    pass
-                try:
-                    if isinstance(status, int) and status >= 400:
-                        is_failed = True
-                    elif isinstance(status, str) and status.strip().isdigit() and int(status.strip()) >= 400:
-                        is_failed = True
-                except Exception:
-                    pass
-                if not is_failed:
+                if _submit_index_add_documents_job_response_succeeded(job_resp):
                     break
-                # 典型暂态：Index.IndexInitError，指数初始化中/异常时会返回 500；做退避重试
-                if attempt < index_job_retry:
+
+                http_sc = _get_case_insensitive(meta, "status_code", None)
+                http_int: Optional[int] = None
+                try:
+                    if http_sc is not None and str(http_sc).strip() != "":
+                        http_int = int(http_sc)
+                except (TypeError, ValueError):
+                    http_int = None
+                status_int: Optional[int] = None
+                if isinstance(status, int):
+                    status_int = status
+                elif isinstance(status, str) and str(status).strip().isdigit():
+                    try:
+                        status_int = int(str(status).strip())
+                    except ValueError:
+                        status_int = None
+
+                retry_for_http = (http_int is not None and http_int >= 400) or (
+                    status_int is not None and status_int >= 400
+                )
+                if retry_for_http and submit_attempt < index_job_retry:
+                    print(
+                        f"[{_now()}] SubmitIndexAddDocumentsJob HTTP 非 2xx（{http_int or status_int}），"
+                        f"{index_job_retry_interval}s 后重试 ({submit_attempt + 1}/{index_job_retry + 1})"
+                    )
                     time.sleep(index_job_retry_interval)
                     continue
-                raise RuntimeError(f"SubmitIndexAddDocumentsJob失败：code={code}, status={status}, message={message}")
+
+                # 已拿到响应但非成功且非明确 HTTP 错误：不再重复 Submit，避免同一次任务多次建索引任务
+                raise RuntimeError(
+                    f"SubmitIndexAddDocumentsJob返回未判为成功（已停止重试）：code={code}, status={status}, message={message}"
+                )
+            parsed_job_id = extract_bailian_job_id(last_job_resp or {})
+            print(f"[{_now()}] SubmitIndexAddDocumentsJob 解析 job_id={parsed_job_id or '<空>'}")
+            if not str(parsed_job_id).strip() and isinstance(last_job_resp, dict):
+                top_keys = [k for k in last_job_resp.keys() if k != "_meta"][:40]
+                data_blob = _get_case_insensitive(last_job_resp, "data", None) or _get_case_insensitive(
+                    last_job_resp, "Data", None
+                )
+                data_keys: List[str] = []
+                if isinstance(data_blob, dict):
+                    data_keys = list(data_blob.keys())[:40]
+                elif data_blob is not None:
+                    data_keys = [f"<非 dict: {type(data_blob).__name__}>"]
+                print(
+                    f"[{_now()}] 未解析到 job_id：响应顶层键（节选）={top_keys}；"
+                    f"Data 内键（节选）={data_keys}（不打印敏感字段值）"
+                )
+            _apply_index_outcome_to_kb_upload_records(
+                summary,
+                upload_records_db_path,
+                last_job_resp,
+                None,
+            )
+            summary["index_job_poll_enabled"] = index_poll_enabled
+            job_id_for_poll = str(parsed_job_id).strip()
+            if not str(job_id_for_poll).strip():
+                summary["index_job_poll_status"] = "SKIPPED_NO_JOB_ID"
+                summary["index_job_poll_started_at"] = ""
+                summary["index_job_poll_finished_at"] = _now()
+                summary["index_job_poll_attempts"] = 0
+                summary["index_job_final_status"] = ""
+                summary["index_job_status_raw"] = None
+                summary["index_job_poll_last_error"] = "SubmitIndexAddDocumentsJob 响应中未解析到 job_id，无法轮询 GetIndexJobStatus"
+            elif not index_poll_enabled:
+                summary["index_job_poll_status"] = "DISABLED"
+                summary["index_job_poll_started_at"] = ""
+                summary["index_job_poll_finished_at"] = _now()
+                summary["index_job_poll_attempts"] = 0
+                summary["index_job_final_status"] = "SUBMITTED_ONLY"
+                summary["index_job_status_raw"] = None
+                summary["index_job_poll_last_error"] = ""
+            else:
+                if not hasattr(client_for_index_job, "get_index_job_status_with_options"):
+                    summary["index_job_poll_status"] = "SDK_UNSUPPORTED_OR_ERROR"
+                    summary["index_job_poll_finished_at"] = _now()
+                    summary["index_job_poll_last_error"] = (
+                        "当前 SDK Client 无 get_index_job_status_with_options，请执行：pip install -U alibabacloud-bailian20231229"
+                    )
+                    print(f"[{_now()}] {summary['index_job_poll_last_error']}")
+                else:
+                    try:
+                        poll_index_job_status_close_loop(
+                            client_for_index_job,
+                            workspace_id=workspace_id,
+                            index_id=index_id,
+                            job_id=str(job_id_for_poll).strip(),
+                            summary=summary,
+                            upload_records_db_path=upload_records_db_path,
+                            poll_interval_sec=index_poll_interval_sec,
+                            poll_timeout_sec=index_poll_timeout_sec,
+                        )
+                    except RuntimeError as rexc:
+                        if "get_index_job_status" in str(rexc) or "SDK" in str(rexc):
+                            summary["index_job_poll_status"] = "SDK_UNSUPPORTED_OR_ERROR"
+                            summary["index_job_poll_finished_at"] = _now()
+                            summary["index_job_poll_last_error"] = str(rexc)[:2000]
+                            print(f"[{_now()}] GetIndexJobStatus 不可用，保持 INDEX_SUBMITTED：{rexc}")
+                        else:
+                            summary["index_job_poll_status"] = "ERROR"
+                            summary["index_job_poll_finished_at"] = _now()
+                            summary["index_job_poll_last_error"] = str(rexc)[:2000]
+                            print(f"[{_now()}] 索引任务轮询异常（不重复提交任务）：{rexc}")
         except Exception as e:
             summary["submit_index_add_documents_job_error"] = str(e)
             print(f"[{_now()}] 调用SubmitIndexAddDocumentsJob失败（不影响已上传文件）：{e}")
+            _apply_index_outcome_to_kb_upload_records(
+                summary,
+                upload_records_db_path,
+                None,
+                str(e),
+            )
+            summary["index_job_poll_enabled"] = index_poll_enabled
+            summary["index_job_poll_status"] = "SUBMIT_FAILED_NO_POLL"
+            summary["index_job_poll_finished_at"] = _now()
+            summary["index_job_poll_last_error"] = str(e)[:2000]
+    elif index_id and not summary.get("uploaded_file_ids"):
+        print(f"[{_now()}] 本次无新上传文件（可能全部幂等跳过），已跳过 SubmitIndexAddDocumentsJob。")
+        summary["index_job_poll_enabled"] = index_poll_enabled
+        summary["index_job_poll_status"] = "NO_FILES_NO_SUBMIT"
 
     os.makedirs(out_root, exist_ok=True)
     upload_report_path = os.path.join(out_root, "aliyun_upload_report.json")

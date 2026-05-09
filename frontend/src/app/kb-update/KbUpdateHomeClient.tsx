@@ -38,7 +38,8 @@ function buildTaskName(job: KBJobData): string {
     steps.has("law_index_update") &&
     steps.has("treaty_index_update") &&
     steps.has("treaty_download") &&
-    steps.has("kb_export");
+    steps.has("kb_export") &&
+    steps.has("kb_upload");
   if (hasAll) return `${typeLabel}全流程更新任务`;
 
   const parts: string[] = [];
@@ -46,6 +47,7 @@ function buildTaskName(job: KBJobData): string {
   if (steps.has("treaty_index_update")) parts.push("下载索引");
   if (steps.has("treaty_download")) parts.push("库下载");
   if (steps.has("kb_export")) parts.push("清洗数据");
+  if (steps.has("kb_upload")) parts.push("上传知识库");
   if (parts.length === 0) return `${typeLabel}任务`;
   return `${typeLabel}${parts.join("+")}任务`;
 }
@@ -68,7 +70,7 @@ export default function KbUpdateHomeClient() {
       <header className={`${kbCard} ${kbCardPadding}`}>
         <h1 className="text-2xl font-semibold tracking-tight text-[var(--app-text)]">【更新知识库】</h1>
         <p className="mt-2 text-sm text-[var(--app-text-muted)]">
-          面向非技术用户的法规与条约更新入口，支持一键全流程、分步执行、失败重试与历史复用。
+          面向非技术用户的法规与条约更新入口，支持一键全流程与分步执行。任务失败后请新建任务重新执行（不支持在同一任务内续跑失败步骤）。可在历史页查看记录并新建任务。
         </p>
         <div className="mt-4 flex flex-wrap gap-3">
           <Link href="/kb-update/new" className={kbPrimaryBtn}>

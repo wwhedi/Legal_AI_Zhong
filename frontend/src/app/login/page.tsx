@@ -3,7 +3,7 @@
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { fetchMe, login as loginRequest } from "@/lib/auth-client";
+import { fetchMe, getSafeInternalPath, login as loginRequest } from "@/lib/auth-client";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -20,7 +20,12 @@ export default function LoginPage() {
         const me = await fetchMe();
         if (cancelled) return;
         if (me) {
-          router.replace("/new-feature-chat");
+          const nextRaw =
+            typeof window !== "undefined"
+              ? new URLSearchParams(window.location.search).get("next")
+              : null;
+          const next = getSafeInternalPath(nextRaw);
+          router.replace(next ?? "/new-feature-chat");
           return;
         }
       } catch {
@@ -49,7 +54,10 @@ export default function LoginPage() {
         setError(r.message);
         return;
       }
-      router.replace("/new-feature-chat");
+      const nextRaw =
+        typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("next") : null;
+      const next = getSafeInternalPath(nextRaw);
+      router.replace(next ?? "/new-feature-chat");
     } finally {
       setSubmitting(false);
     }

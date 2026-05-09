@@ -21,6 +21,7 @@ class UserPublic(BaseModel):
     id: str
     username: str
     display_name: str
+    role: str = "user"
 
 
 class LoginResponse(BaseModel):

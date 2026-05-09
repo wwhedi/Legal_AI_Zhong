@@ -107,6 +107,18 @@ export interface KBJobListResponse {
   items: KBJobData[];
 }
 
+/** GET /kb-update/jobs/{id}/validate-report-summary */
+export interface KBValidateReportSummaryResponse {
+  exists: boolean;
+  applicable: boolean;
+  report_path: string;
+  total_chunks?: number | null;
+  error_count?: number | null;
+  warning_count?: number | null;
+  allow_upload?: boolean | null;
+  parse_error?: string | null;
+}
+
 /** 新 RAG 知识库引用（与 /new-rag/ask citations 对齐，字段已规范化为展示用） */
 export interface QwenKbSource {
   id: number;

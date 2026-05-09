@@ -77,6 +77,9 @@ export default function NewKnowledgeJobPage() {
             分步运行（可按需勾选步骤）
           </label>
         </fieldset>
+        <p className="text-xs text-[var(--app-text-muted)]">
+          若任务中包含「上传阿里云知识库」，百炼侧为追加导入、不会自动覆盖旧文档；下一步勾选上传步骤时将显示详细说明。
+        </p>
       </div>
 
       <div className="flex items-center justify-end gap-3">

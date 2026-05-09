@@ -10,10 +10,13 @@ import sys
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Literal, Optional
+from typing import Annotated, Dict, List, Literal, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+
+from auth.config import AuthUserRecord
+from auth.dependencies import require_admin
 
 router = APIRouter(prefix="/kb-update", tags=["kb-update"])
 
@@ -116,6 +119,49 @@ class JobListResponse(BaseModel):
 
 class JobSnapshotResponse(BaseModel):
     job: JobData
+
+
+class KBValidateReportSummaryResponse(BaseModel):
+    """清洗产物目录下的 validate_report.json 摘要（由 scripts/validate_kb_export.py 生成）。"""
+
+    exists: bool = False
+    applicable: bool = True
+    report_path: str = ""
+    total_chunks: Optional[int] = None
+    error_count: Optional[int] = None
+    warning_count: Optional[int] = None
+    allow_upload: Optional[bool] = None
+    parse_error: Optional[str] = None
+
+
+# 与 frontend `lawTypeLabel` / 法规爬虫目录名一致
+LAW_TYPE_LABEL_CN: Dict[str, str] = {
+    "xf": "宪法",
+    "flfg": "法律",
+    "xzfg": "行政法规",
+    "jcfg": "监察法规",
+    "sfjs": "司法解释",
+    "dfxfg": "地方法规",
+    "tiaoyue": "条约（全部）",
+    "shuangbian": "双边条约",
+    "duobian": "多边条约",
+}
+
+
+def _validate_report_path_for_job(job: JobData) -> tuple[bool, Path, str]:
+    """
+    返回 (是否适用法规类路径, Path, 展示用绝对/规范化路径字符串)。
+    条约类不适用与法规相同的「法规爬虫/{中文类型}/清洗产物」约定。
+    """
+    if job.law_type in TREATY_TYPES:
+        return False, Path(), ""
+    label = LAW_TYPE_LABEL_CN.get(job.law_type, job.law_type)
+    p = Path(job.storage_root) / "法规爬虫" / label / "清洗产物" / "validate_report.json"
+    try:
+        resolved = str(p.resolve())
+    except Exception:
+        resolved = str(p)
+    return True, p, resolved
 
 
 JOB_STORE: Dict[str, JobData] = {}
@@ -570,7 +616,10 @@ async def _run_job(job_id: str) -> None:
 
 
 @router.post("/jobs", response_model=CreateJobResponse)
-async def create_job(req: CreateJobRequest) -> CreateJobResponse:
+async def create_job(
+    req: CreateJobRequest,
+    _admin: Annotated[AuthUserRecord, Depends(require_admin)],
+) -> CreateJobResponse:
     if req.law_type in LAW_TYPES:
         full_scan = req.start_page == 0 and req.end_page == 0
         if not full_scan and (req.start_page < 1 or req.end_page < req.start_page):
@@ -602,7 +651,10 @@ async def create_job(req: CreateJobRequest) -> CreateJobResponse:
 
 
 @router.post("/jobs/{job_id}/start", response_model=StartJobResponse)
-async def start_job(job_id: str) -> StartJobResponse:
+async def start_job(
+    job_id: str,
+    _admin: Annotated[AuthUserRecord, Depends(require_admin)],
+) -> StartJobResponse:
     async with STORE_LOCK:
         job = JOB_STORE.get(job_id)
         if not job:
@@ -622,7 +674,10 @@ async def start_job(job_id: str) -> StartJobResponse:
 
 
 @router.post("/jobs/{job_id}/stop", response_model=StopJobResponse)
-async def stop_job(job_id: str) -> StopJobResponse:
+async def stop_job(
+    job_id: str,
+    _admin: Annotated[AuthUserRecord, Depends(require_admin)],
+) -> StopJobResponse:
     task: Optional[asyncio.Task] = None
     async with STORE_LOCK:
         job = JOB_STORE.get(job_id)
@@ -661,14 +716,95 @@ async def stop_job(job_id: str) -> StopJobResponse:
 
 
 @router.get("/jobs", response_model=JobListResponse)
-async def list_jobs(limit: int = 20, offset: int = 0) -> JobListResponse:
+async def list_jobs(
+    _admin: Annotated[AuthUserRecord, Depends(require_admin)],
+    limit: int = 20,
+    offset: int = 0,
+) -> JobListResponse:
     safe_limit = max(1, min(limit, 200))
     safe_offset = max(0, offset)
     return _list_jobs_from_db(limit=safe_limit, offset=safe_offset)
 
 
+@router.get("/jobs/{job_id}/validate-report-summary", response_model=KBValidateReportSummaryResponse)
+async def get_validate_report_summary(
+    job_id: str,
+    _admin: Annotated[AuthUserRecord, Depends(require_admin)],
+) -> KBValidateReportSummaryResponse:
+    async with STORE_LOCK:
+        job = JOB_STORE.get(job_id)
+    if not job:
+        job = _load_job_from_db(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="任务不存在")
+        async with STORE_LOCK:
+            JOB_STORE[job_id] = job
+
+    applicable, path_obj, path_str = _validate_report_path_for_job(job)
+    if not applicable:
+        return KBValidateReportSummaryResponse(
+            exists=False,
+            applicable=False,
+            report_path="",
+        )
+
+    if not path_obj.is_file():
+        return KBValidateReportSummaryResponse(
+            exists=False,
+            applicable=True,
+            report_path=path_str,
+        )
+
+    try:
+        raw = path_obj.read_text(encoding="utf-8")
+        data = json.loads(raw)
+    except Exception as exc:
+        return KBValidateReportSummaryResponse(
+            exists=True,
+            applicable=True,
+            report_path=path_str,
+            parse_error=str(exc),
+        )
+
+    if not isinstance(data, dict):
+        return KBValidateReportSummaryResponse(
+            exists=True,
+            applicable=True,
+            report_path=path_str,
+            parse_error="validate_report.json 根类型不是对象",
+        )
+
+    def _int(key: str) -> Optional[int]:
+        v = data.get(key)
+        if v is None:
+            return None
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return None
+
+    def _bool(key: str) -> Optional[bool]:
+        v = data.get(key)
+        if isinstance(v, bool):
+            return v
+        return None
+
+    return KBValidateReportSummaryResponse(
+        exists=True,
+        applicable=True,
+        report_path=path_str,
+        total_chunks=_int("total_chunks"),
+        error_count=_int("error_count"),
+        warning_count=_int("warning_count"),
+        allow_upload=_bool("allow_upload"),
+    )
+
+
 @router.get("/jobs/{job_id}", response_model=JobSnapshotResponse)
-async def get_job(job_id: str) -> JobSnapshotResponse:
+async def get_job(
+    job_id: str,
+    _admin: Annotated[AuthUserRecord, Depends(require_admin)],
+) -> JobSnapshotResponse:
     async with STORE_LOCK:
         job = JOB_STORE.get(job_id)
     if not job:

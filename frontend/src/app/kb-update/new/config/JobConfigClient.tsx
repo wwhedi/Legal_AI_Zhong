@@ -2,9 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { TREATY_TYPES, isLawType, lawTypeLabel, type LawType } from "../../_lib/config";
+import { TREATY_TYPES, isLawType, isRunMode, lawTypeLabel, type LawType } from "../../_lib/config";
 import { createKBUpdateJob } from "@/services/api";
-import type { KBStepId } from "@/types";
+import type { KBRunMode, KBStepId } from "@/types";
 import { kbCard, kbCardPadding, kbInput, kbPrimaryBtn, kbSecondaryBtn, kbSection } from "../../_lib/ui";
 
 export function JobConfigClient(props: {
@@ -34,9 +34,11 @@ export function JobConfigClient(props: {
     if (selectedStepSet.has("treaty_index_update")) labels.push("建立下载索引");
     if (selectedStepSet.has("treaty_download")) labels.push("库下载");
     if (selectedStepSet.has("kb_export")) labels.push("清洗与知识库导出");
+    if (selectedStepSet.has("kb_upload")) labels.push("上传阿里云知识库");
     if (labels.length === 0) labels.push("结果汇总");
     return labels;
   }, [selectedStepSet]);
+  const hasKbUpload = useMemo(() => selectedStepSet.has("kb_upload"), [selectedStepSet]);
   const cleaningPaths = useMemo(() => {
     if (!lawType || isTreaty || !hasKbExport) return null;
     const typeLabel = lawTypeLabel(lawType);
@@ -83,10 +85,11 @@ export function JobConfigClient(props: {
     setSubmitting(true);
     setSubmitError("");
     try {
+      const run_mode: KBRunMode = isRunMode(runMode) ? runMode : "full_run";
       const created = await createKBUpdateJob({
         law_type: lawType,
         storage_root: storageRoot,
-        run_mode: "step_run",
+        run_mode,
         steps: stepList,
         start_page: needsPageRange ? Number(startPage) : 0,
         end_page: needsPageRange ? Number(endPage) : 0,
@@ -128,6 +131,20 @@ export function JobConfigClient(props: {
         <p className="rounded-xl border border-[var(--app-border)] bg-[var(--app-danger-soft)] p-4 text-sm text-[var(--app-danger)]">
           {validationMsg}
         </p>
+      ) : null}
+
+      {hasKbUpload ? (
+        <div
+          className="rounded-xl border border-amber-200/90 bg-[var(--app-warning-soft)]/90 p-4 text-sm text-[var(--app-text-muted)]"
+          role="note"
+        >
+          <p className="font-medium text-[var(--app-text)]">百炼知识库上传说明</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            <li>当前上传到百炼为<strong className="text-[var(--app-text)]">追加导入</strong>，不会在服务端自动覆盖已有文档。</li>
+            <li>重复执行「上传」步骤可能产生<strong className="text-[var(--app-text)]">重复检索内容</strong>。</li>
+            <li>后续将通过上传记录表与删除旧版本能力优化；在此之前请控制上传频次或在百炼控制台按需清理。</li>
+          </ul>
+        </div>
       ) : null}
 
       <div className={`${kbCard} ${kbCardPadding}`}>

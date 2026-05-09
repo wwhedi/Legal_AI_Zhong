@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { getKBUpdateJob } from "@/services/api";
-import type { KBJobData } from "@/types";
+import { getKBUpdateJob, getKBUpdateValidateReportSummary } from "@/services/api";
+import type { KBJobData, KBValidateReportSummaryResponse } from "@/types";
 import { lawTypeLabel } from "../../../_lib/config";
 import {
   kbCard,
@@ -74,11 +74,22 @@ function buildOutputItems(job: KBJobData, isFailed: boolean): Array<{ label: str
       label: "知识库上传文件目录",
       path: `${base}/法规爬虫/${typeLabel}/清洗产物/aliyun_upload/${typeLabel}`,
     });
-    items.push({ label: "主数据表", path: `${base}/法规爬虫/${typeLabel}/清洗产物/law_master.jsonl` });
-    items.push({ label: "清洗报告", path: `${base}/法规爬虫/${typeLabel}/清洗产物/clean_report.txt` });
+    items.push({ label: "主数据表 law_master.jsonl", path: `${base}/法规爬虫/${typeLabel}/清洗产物/law_master.jsonl` });
+    items.push({ label: "清洗报告 clean_report.txt", path: `${base}/法规爬虫/${typeLabel}/清洗产物/clean_report.txt` });
+    items.push({
+      label: "上传前校验报告 validate_report.json（可选）",
+      path: `${base}/法规爬虫/${typeLabel}/清洗产物/validate_report.json`,
+    });
   }
   if (steps.has("kb_upload")) {
-    items.push({ label: "上传执行脚本", path: `${base}/法规爬虫5-上传阿里云知识库.py` });
+    items.push({
+      label: "上传结果报告 aliyun_upload_report.json",
+      path: `${base}/法规爬虫/${typeLabel}/清洗产物/aliyun_upload_report.json`,
+    });
+    items.push({
+      label: "上传脚本（仓库内）",
+      path: "law_spider/法规爬虫5-上传阿里云知识库.py",
+    });
   }
 
   items.push({ label: isFailed ? "错误日志" : "运行日志（排查用）", path: "law_spider/error.log" });
@@ -90,6 +101,9 @@ export default function JobResultPage() {
   const jobId = params?.jobId ?? "";
   const [job, setJob] = useState<KBJobData | null>(null);
   const [error, setError] = useState("");
+  const [validateSummary, setValidateSummary] = useState<KBValidateReportSummaryResponse | null>(null);
+  const [validateError, setValidateError] = useState("");
+  const [validateLoaded, setValidateLoaded] = useState(false);
 
   useEffect(() => {
     if (!jobId) return;
@@ -102,6 +116,31 @@ export default function JobResultPage() {
       }
     }
     load();
+  }, [jobId]);
+
+  useEffect(() => {
+    if (!jobId) return;
+    let cancelled = false;
+    setValidateLoaded(false);
+    void (async () => {
+      try {
+        const v = await getKBUpdateValidateReportSummary(jobId);
+        if (!cancelled) {
+          setValidateSummary(v);
+          setValidateError("");
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setValidateSummary(null);
+          setValidateError(err instanceof Error ? err.message : "加载校验摘要失败");
+        }
+      } finally {
+        if (!cancelled) setValidateLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [jobId]);
 
   const pageCount = useMemo(() => {
@@ -168,6 +207,62 @@ export default function JobResultPage() {
       </article>
 
       <article className={`${kbCard} p-6`}>
+        <h2 className="text-base font-semibold text-[var(--app-text)]">上传前校验摘要</h2>
+        <p className="mt-1 text-xs text-[var(--app-text-muted)]">
+          由本地脚本生成报告后，结果页可读取摘要；不会阻断任务与百炼上传流程。
+        </p>
+        {!validateLoaded ? (
+          <p className="mt-3 text-sm text-[var(--app-text-muted)]">加载校验摘要中…</p>
+        ) : validateError ? (
+          <p className="mt-3 text-sm text-[var(--app-danger)]">{validateError}</p>
+        ) : validateSummary && !validateSummary.applicable ? (
+          <p className="mt-3 text-sm text-[var(--app-text-muted)]">条约类任务不适用本地上传前校验报告路径。</p>
+        ) : validateSummary && validateSummary.exists ? (
+          <div className="mt-4 space-y-2 text-sm text-[var(--app-text-muted)]">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <p>
+                <span className="text-[var(--app-text)]">总切片数</span>：
+                {validateSummary.total_chunks ?? "—"}
+              </p>
+              <p>
+                <span className="text-[var(--app-text)]">错误数</span>：
+                {validateSummary.error_count ?? "—"}
+              </p>
+              <p>
+                <span className="text-[var(--app-text)]">警告数</span>：
+                {validateSummary.warning_count ?? "—"}
+              </p>
+              <p>
+                <span className="text-[var(--app-text)]">允许上传（报告字段）</span>：
+                {validateSummary.allow_upload === true
+                  ? "是"
+                  : validateSummary.allow_upload === false
+                    ? "否"
+                    : "—"}
+              </p>
+            </div>
+            <p>
+              <span className="text-[var(--app-text)]">报告路径</span>：
+              <code className="break-all text-[13px]">{validateSummary.report_path || "—"}</code>
+            </p>
+            {validateSummary.parse_error ? (
+              <p className="text-sm text-[var(--app-danger)]">报告解析异常：{validateSummary.parse_error}</p>
+            ) : null}
+          </div>
+        ) : validateSummary ? (
+          <div className="mt-4 space-y-2 text-sm text-[var(--app-text-muted)]">
+            <p>未执行上传前校验（在清洗产物目录未找到 validate_report.json）。</p>
+            {validateSummary.report_path ? (
+              <p>
+                预期路径：
+                <code className="break-all text-[13px]">{validateSummary.report_path}</code>
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+      </article>
+
+      <article className={`${kbCard} p-6`}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-base font-semibold text-[var(--app-text)]">步骤耗时明细</h2>
           <span className="rounded-full bg-[var(--app-primary-soft)] px-3 py-1 text-xs font-semibold text-[var(--app-primary)] ring-1 ring-[var(--app-primary-soft)]">
@@ -193,9 +288,12 @@ export default function JobResultPage() {
         >
           <h2 className="text-base font-semibold text-[var(--app-text)]">异常处理建议</h2>
           <ul className="mt-3 space-y-2 text-sm text-[var(--app-text-muted)]">
-            <li>若第 1 页即失败，优先检查网络环境或更换出口 IP 后重试。</li>
+            <li>若第 1 页即失败，优先检查网络环境或更换出口 IP 后，新建任务再执行。</li>
             <li>分页更新建议每次不超过 100 页，降低反爬限制风险。</li>
-            <li>可使用“仅重试失败步骤”减少重复耗时。</li>
+            <li>
+              当前不支持在同一任务内续跑失败步骤；请修正原因后<strong className="text-[var(--app-text)]">新建任务</strong>
+              从头或从所需步骤重新执行。
+            </li>
           </ul>
         </article>
       ) : (
@@ -206,7 +304,7 @@ export default function JobResultPage() {
           <ul className="mt-3 space-y-2 text-sm text-[var(--app-text-muted)]">
             <li>当前任务已成功完成，无需处理异常。</li>
             <li>如需复核执行细节，可在监控页查看完整实时日志。</li>
-            <li>若后续新增规则或范围变更，可直接复用当前配置重建任务。</li>
+            <li>若后续新增规则或范围变更，请新建任务并重新填写目录与步骤。</li>
           </ul>
         </article>
       )}
