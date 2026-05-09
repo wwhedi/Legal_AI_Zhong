@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bot, MessageSquarePlus, Send, Square, User, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Bot, LogOut, MessageSquarePlus, Send, Square, User, X } from "lucide-react";
 import {
   PLACEHOLDER_BASIS,
   PLACEHOLDER_RISK,
@@ -9,18 +10,25 @@ import {
   QwenKbAnswerCard,
   type QwenAnswer,
 } from "@/components/chat/QwenKbAnswerCard";
+import { CitationSidePanel } from "@/components/chat/CitationSidePanel";
 import { ChatSessionSidebar } from "@/components/chat/ChatSessionSidebar";
 import { ProcessTimeline } from "@/components/chat/ProcessTimeline";
 import {
-  createChatSession,
   generateSessionTitle,
   getActiveSessionId,
-  getChatSessions,
-  saveChatSessions,
+  LEGACY_CHAT_SESSIONS_STORAGE_KEY,
   setActiveSessionId as persistActiveSessionId,
-  updateChatSession,
 } from "@/lib/chat-sessions";
-import { cn } from "@/lib/utils";
+import { fetchMe, getApiBaseUrl, logout as logoutRequest } from "@/lib/auth-client";
+import {
+  apiAppendMessage,
+  apiCreateSession,
+  apiGetSessionMessages,
+  apiListSessions,
+  apiPatchSessionTitle,
+  isChatApiUnauthorized,
+} from "@/lib/chat-session-api";
+import { cn, isValidExternalUrl, normalizeExternalUrl } from "@/lib/utils";
 import type {
   ChatItem,
   ChatSession,
@@ -57,7 +65,6 @@ type NewRagResponse = {
   citations: NewRagCitation[];
 };
 
-const DEFAULT_BASE_URL = "http://localhost:8000";
 /** 与流式回答兜底模型名一致（见 pushEvent 内解析 d.model） */
 const DEFAULT_STREAM_MODEL_NAME = "qwen-plus";
 
@@ -89,10 +96,6 @@ function buildConversationHistoryForAskStream(recentMessages: ChatItem[]): Conve
   return out;
 }
 
-function getApiBaseUrl() {
-  return process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, "") || DEFAULT_BASE_URL;
-}
-
 function parseRefIdToNumber(refId?: string): number | null {
   const raw = String(refId ?? "").trim();
   const m = /^\[(\d+)\]$/.exec(raw) || /^(\d+)$/.exec(raw);
@@ -113,12 +116,45 @@ function chapterArticleFromParts(ch: unknown, ar: unknown): string {
   return c && c !== "未提供" ? c : a || "未提供";
 }
 
+/** 开发环境仅：对比各 ref 的 sourceUrl 字节与校验结果（不打印法规正文全文） */
+type CitationUrlDebugRow = {
+  id: number;
+  refIdRaw: string;
+  law: string;
+  chapterArticle: string;
+  urlApiRaw: string | null;
+  urlTrimOnly: string | null;
+  urlNormalized: string | null;
+};
+
+function debugLogCitationUrls(phase: string, rows: CitationUrlDebugRow[]) {
+  if (process.env.NODE_ENV !== "development" || rows.length === 0) return;
+  console.groupCollapsed(`[debug citation url] ${phase} (${rows.length} items)`);
+  for (const r of rows) {
+    const norm = r.urlNormalized ?? "";
+    console.log("[debug citation url]");
+    console.log(`id: ${r.id}`);
+    console.log(`ref_id: ${r.refIdRaw}`);
+    console.log(`law: ${r.law}`);
+    console.log(`chapter: ${r.chapterArticle}`);
+    console.log(`urlApiRaw: ${r.urlApiRaw ?? "(null)"}`);
+    console.log(`urlTrimOnly: ${r.urlTrimOnly ?? "(null)"}`);
+    console.log(`urlNormalized: ${norm}`);
+    console.log(`normalizedLength: ${norm.length}`);
+    console.log(`normalizedEncoded: ${encodeURIComponent(norm)}`);
+    console.log(`valid: ${norm !== "" && isValidExternalUrl(norm)}`);
+  }
+  console.groupEnd();
+}
+
 /** 与 ProcessTimeline 一致：从 kb_retrieve_done 的 citations_summary 构造来源，供流式阶段 QwenKbAnswerCard 的 [n] 悬浮 */
 function kbSourcesFromRagEvents(events: RagProcessEvent[]): QwenKbSource[] {
+  const isDev = process.env.NODE_ENV === "development";
   const hit = [...events].reverse().find((e) => e.stage === "kb_retrieve_done");
   const d = asEventRecord(hit?.data);
   const arr = d && Array.isArray(d.citations_summary) ? d.citations_summary : [];
   const out: QwenKbSource[] = [];
+  const debugRows: CitationUrlDebugRow[] = [];
   for (const raw of arr) {
     const row = asEventRecord(raw);
     if (!row) continue;
@@ -128,6 +164,24 @@ function kbSourcesFromRagEvents(events: RagProcessEvent[]): QwenKbSource[] {
     const chapter = row.chapter != null ? String(row.chapter) : "未提供";
     const article = row.article != null ? String(row.article) : "未提供";
     const refRaw = row.ref_id != null ? String(row.ref_id).trim() : "";
+    const su = row.source_url ?? row.sourceUrl;
+    const urlApiRaw = su == null ? null : String(su);
+    const urlTrimOnly = su == null ? null : (() => {
+      const t = String(su).trim();
+      return t ? t : null;
+    })();
+    const urlNormalized = normalizeExternalUrl(urlApiRaw);
+    if (isDev) {
+      debugRows.push({
+        id,
+        refIdRaw: refRaw || (row.ref_id != null ? String(row.ref_id) : ""),
+        law: lawName,
+        chapterArticle: chapterArticleFromParts(chapter, article),
+        urlApiRaw,
+        urlTrimOnly,
+        urlNormalized,
+      });
+    }
     out.push({
       id,
       refId: refRaw || `[${id}]`,
@@ -139,19 +193,19 @@ function kbSourcesFromRagEvents(events: RagProcessEvent[]): QwenKbSource[] {
       chapter,
       article,
       text: `${lawName} · ${chapterArticleFromParts(chapter, article)}`,
-      sourceUrl: (() => {
-        const su = row.source_url ?? row.sourceUrl;
-        if (su == null) return null;
-        const s = String(su).trim();
-        return s ? s : null;
-      })(),
+      sourceUrl: urlNormalized,
       score: typeof row.score === "number" ? row.score : undefined,
     });
   }
-  return out.sort((a, b) => a.id - b.id);
+  const sorted = out.sort((a, b) => a.id - b.id);
+  if (isDev && debugRows.length > 0) {
+    debugRows.sort((a, b) => a.id - b.id);
+    debugLogCitationUrls("kb_retrieve_done.citations_summary (streaming)", debugRows);
+  }
+  return sorted;
 }
 
-type SectionKind = "conclusion" | "basis" | "risks" | "actionAdvice" | "actionSteps";
+type SectionKind = "conclusion" | "keyFacts" | "basis" | "risks" | "actionAdvice" | "actionSteps";
 
 type SectionHeaderRule = {
   kind: SectionKind;
@@ -168,6 +222,7 @@ const SEC_P2 = "(?:[2２]\\s*(?:[)）]|[、,，]|[.．])\\s*|[二]\\s*[、,，.]
 const SEC_P3 = "(?:[3３]\\s*(?:[)）]|[、,，]|[.．])\\s*|[三]\\s*[、,，.]\\s*)";
 const SEC_P4 = "(?:[4４]\\s*(?:[)）]|[、,，]|[.．])\\s*|[四]\\s*[、,，.]\\s*)";
 const SEC_P5 = "(?:[5５]\\s*(?:[)）]|[、,，]|[.．])\\s*|[五]\\s*[、,，.]\\s*)";
+const SEC_P6 = "(?:[6６]\\s*(?:[)）]|[、,，]|[.．])\\s*|[六]\\s*[、,，.]\\s*)";
 
 /** 列表项「- [1] …」不是小节标题；不把引用 [n] 当章节号 */
 function isCitationListLine(line: string): boolean {
@@ -222,6 +277,66 @@ const SECTION_HEADER_RULES: SectionHeaderRule[] = [
       /^\s*(?:办理步骤|处理步骤|执行步骤|流程步骤|操作步骤)(\s*[：:]\s*|\s+)(.*)$/s,
       /^\s*(?:办理步骤|处理步骤|执行步骤|流程步骤|操作步骤)\s*$/s,
     ],
+  },
+  {
+    kind: "actionSteps",
+    friendly: true,
+    match: /^\s*(?:维权步骤|索赔步骤|申请步骤)(?:\s*[：:]|\s+$|\s+)/,
+    strips: [
+      /^\s*(?:维权步骤|索赔步骤|申请步骤)(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*(?:维权步骤|索赔步骤|申请步骤)\s*$/s,
+    ],
+  },
+  {
+    kind: "keyFacts",
+    friendly: true,
+    match: new RegExp(`^\\s*${SEC_P2}影响结果的关键事实`),
+    flexStrips: [new RegExp(`^\\s*${SEC_P2}影响结果的关键事实\\s*(.*)$`, "s")],
+    strips: [
+      /^\s*(?:(?:[2２]\s*(?:[)）]|[、,，]|[.．])\s*|[二]\s*[、,，.]\s*|2\s*\.)\s*)影响结果的关键事实(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*(?:(?:[2２]\s*(?:[)）]|[、,，]|[.．])\s*|[二]\s*[、,，.]\s*|2\s*\.)\s*)影响结果的关键事实\s*$/s,
+    ],
+  },
+  {
+    kind: "keyFacts",
+    friendly: true,
+    match: /^\s*影响结果的关键事实(?:\s*[：:]|\s+$|\s+)/,
+    flexStrips: [
+      /^\s*影响结果的关键事实\s*[：:]\s*(.*)$/s,
+      /^\s*影响结果的关键事实\s+(.+)$/s,
+      /^\s*影响结果的关键事实\s*$/s,
+    ],
+    strips: [/^\s*影响结果的关键事实(\s*[：:]\s*|\s+)(.*)$/s, /^\s*影响结果的关键事实\s*$/s],
+  },
+  {
+    kind: "keyFacts",
+    friendly: true,
+    match: /^\s*核心判断要点(?:\s*[：:]|\s+$|\s+)/,
+    strips: [/^\s*核心判断要点(\s*[：:]\s*|\s+)(.*)$/s, /^\s*核心判断要点\s*$/s],
+  },
+  {
+    kind: "keyFacts",
+    friendly: true,
+    match: /^\s*关键判断标准(?:\s*[：:]|\s+$|\s+)/,
+    strips: [/^\s*关键判断标准(\s*[：:]\s*|\s+)(.*)$/s, /^\s*关键判断标准\s*$/s],
+  },
+  {
+    kind: "keyFacts",
+    friendly: false,
+    match: /^\s*判断标准(?:\s*[：:]|\s+$|\s+)/,
+    strips: [/^\s*判断标准(\s*[：:]\s*|\s+)(.*)$/s, /^\s*判断标准\s*$/s],
+  },
+  {
+    kind: "keyFacts",
+    friendly: false,
+    match: /^\s*关键判断(?:\s*[：:]|\s+$|\s+)/,
+    strips: [/^\s*关键判断(\s*[：:]\s*|\s+)(.*)$/s, /^\s*关键判断\s*$/s],
+  },
+  {
+    kind: "keyFacts",
+    friendly: false,
+    match: /^\s*关键事实(?:\s*[：:]|\s+$|\s+)/,
+    strips: [/^\s*关键事实(\s*[：:]\s*|\s+)(.*)$/s, /^\s*关键事实\s*$/s],
   },
   {
     kind: "conclusion",
@@ -309,6 +424,27 @@ const SECTION_HEADER_RULES: SectionHeaderRule[] = [
   },
   {
     kind: "conclusion",
+    friendly: true,
+    match: new RegExp(`^\\s*${SEC_P1}直接结论`),
+    flexStrips: [new RegExp(`^\\s*${SEC_P1}直接结论\\s*(.*)$`, "s")],
+    strips: [
+      /^\s*(?:(?:[1１]\s*(?:[)）]|[、,，]|[.．])\s*|[一]\s*[、,，.]\s*|1\s*\.)\s*)直接结论(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*(?:(?:[1１]\s*(?:[)）]|[、,，]|[.．])\s*|[一]\s*[、,，.]\s*|1\s*\.)\s*)直接结论\s*$/s,
+    ],
+  },
+  {
+    kind: "conclusion",
+    friendly: true,
+    match: /^\s*直接结论(?:\s*[：:]|\s+$|\s+)/,
+    flexStrips: [
+      /^\s*直接结论\s*[：:]\s*(.*)$/s,
+      /^\s*直接结论\s+(.+)$/s,
+      /^\s*直接结论\s*$/s,
+    ],
+    strips: [/^\s*直接结论(\s*[：:]\s*|\s+)(.*)$/s, /^\s*直接结论\s*$/s],
+  },
+  {
+    kind: "conclusion",
     friendly: false,
     match: new RegExp(`^\\s*${SEC_P1}结论(?![性书及编])`),
     flexStrips: [new RegExp(`^\\s*${SEC_P1}结论(?![性书及编])\\s*(.*)$`, "s")],
@@ -334,6 +470,39 @@ const SECTION_HEADER_RULES: SectionHeaderRule[] = [
       /^\s*结论(?![性书及编])\s*$/s,
     ],
     strips: [/^\s*结论(\s*[：:]\s*|\s+)(.*)$/s, /^\s*结论(?![性书及编])\s*$/s, /^\s*结论\s*$/s],
+  },
+  {
+    kind: "actionAdvice",
+    friendly: true,
+    match: new RegExp(`^\\s*${SEC_P3}你现在可以这样处理`),
+    flexStrips: [new RegExp(`^\\s*${SEC_P3}你现在可以这样处理\\s*(.*)$`, "s")],
+    strips: [
+      /^\s*(?:(?:[3３]\s*(?:[)）]|[、,，]|[.．])\s*|[三]\s*[、,，.]\s*|3\s*\.)\s*)你现在可以这样处理(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*(?:(?:[3３]\s*(?:[)）]|[、,，]|[.．])\s*|[三]\s*[、,，.]\s*|3\s*\.)\s*)你现在可以这样处理\s*$/s,
+    ],
+  },
+  {
+    kind: "actionAdvice",
+    friendly: true,
+    match: /^\s*你现在可以这样处理(?:\s*[：:]|\s+$|\s+)/,
+    flexStrips: [
+      /^\s*你现在可以这样处理\s*[：:]\s*(.*)$/s,
+      /^\s*你现在可以这样处理\s+(.+)$/s,
+      /^\s*你现在可以这样处理\s*$/s,
+    ],
+    strips: [/^\s*你现在可以这样处理(\s*[：:]\s*|\s+)(.*)$/s, /^\s*你现在可以这样处理\s*$/s],
+  },
+  {
+    kind: "actionAdvice",
+    friendly: true,
+    match: /^\s*下一步建议(?:\s*[：:]|\s+$|\s+)/,
+    strips: [/^\s*下一步建议(\s*[：:]\s*|\s+)(.*)$/s, /^\s*下一步建议\s*$/s],
+  },
+  {
+    kind: "actionAdvice",
+    friendly: true,
+    match: /^\s*处理建议(?:\s*[：:]|\s+$|\s+)/,
+    strips: [/^\s*处理建议(\s*[：:]\s*|\s+)(.*)$/s, /^\s*处理建议\s*$/s],
   },
   {
     kind: "actionAdvice",
@@ -418,6 +587,51 @@ const SECTION_HEADER_RULES: SectionHeaderRule[] = [
     friendly: false,
     match: /^\s*建议(?:\s*[：:]|\s+$|\s+)/,
     strips: [/^\s*建议(\s*[：:]\s*|\s+)(.*)$/s, /^\s*建议\s*$/s],
+  },
+  {
+    kind: "risks",
+    friendly: true,
+    match: new RegExp(`^\\s*${SEC_P5}需要注意`),
+    flexStrips: [new RegExp(`^\\s*${SEC_P5}需要注意\\s*(.*)$`, "s")],
+    strips: [
+      /^\s*(?:(?:[5５]\s*(?:[)）]|[、,，]|[.．])\s*|[五]\s*[、,，.]\s*|5\s*\.)\s*)需要注意(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*(?:(?:[5５]\s*(?:[)）]|[、,，]|[.．])\s*|[五]\s*[、,，.]\s*|5\s*\.)\s*)需要注意\s*$/s,
+    ],
+  },
+  {
+    kind: "risks",
+    friendly: true,
+    match: /^\s*五[、.,．]\s*需要注意(?:\s*[：:]|\s+$|\s+)/,
+    flexStrips: [
+      /^\s*五[、.,．]\s*需要注意\s*[：:]\s*(.*)$/s,
+      /^\s*五[、.,．]\s*需要注意\s+(.+)$/s,
+      /^\s*五[、.,．]\s*需要注意\s*$/s,
+    ],
+    strips: [/^\s*五[、.,．]\s*需要注意(\s*[：:]\s*|\s+)(.*)$/s, /^\s*五[、.,．]\s*需要注意\s*$/s],
+  },
+  {
+    kind: "risks",
+    friendly: true,
+    match: /^\s*特别说明(?:\s*[：:]|\s+$|\s+)/,
+    strips: [/^\s*特别说明(\s*[：:]\s*|\s+)(.*)$/s, /^\s*特别说明\s*$/s],
+  },
+  {
+    kind: "risks",
+    friendly: true,
+    match: /^\s*注意事项(?:\s*[：:]|\s+$|\s+)/,
+    strips: [/^\s*注意事项(\s*[：:]\s*|\s+)(.*)$/s, /^\s*注意事项\s*$/s],
+  },
+  {
+    kind: "risks",
+    friendly: true,
+    match: /^\s*对方可能的抗辩(?:\s*[：:]|\s+$|\s+)/,
+    strips: [/^\s*对方可能的抗辩(\s*[：:]\s*|\s+)(.*)$/s, /^\s*对方可能的抗辩\s*$/s],
+  },
+  {
+    kind: "risks",
+    friendly: true,
+    match: /^\s*特殊风险(?:\s*[：:]|\s+$|\s+)/,
+    strips: [/^\s*特殊风险(\s*[：:]\s*|\s+)(.*)$/s, /^\s*特殊风险\s*$/s],
   },
   {
     kind: "risks",
@@ -525,6 +739,27 @@ const SECTION_HEADER_RULES: SectionHeaderRule[] = [
   {
     kind: "basis",
     friendly: true,
+    match: new RegExp(`^\\s*${SEC_P6}法律依据`),
+    flexStrips: [new RegExp(`^\\s*${SEC_P6}法律依据\\s*(.*)$`, "s")],
+    strips: [
+      /^\s*(?:(?:[6６]\s*(?:[)）]|[、,，]|[.．])\s*|[六]\s*[、,，.]\s*|6\s*\.)\s*)法律依据(\s*[：:]\s*|\s+)(.*)$/s,
+      /^\s*(?:(?:[6６]\s*(?:[)）]|[、,，]|[.．])\s*|[六]\s*[、,，.]\s*|6\s*\.)\s*)法律依据\s*$/s,
+    ],
+  },
+  {
+    kind: "basis",
+    friendly: true,
+    match: /^\s*六[、.,．]\s*法律依据(?:\s*[：:]|\s+$|\s+)/,
+    flexStrips: [
+      /^\s*六[、.,．]\s*法律依据\s*[：:]\s*(.*)$/s,
+      /^\s*六[、.,．]\s*法律依据\s+(.+)$/s,
+      /^\s*六[、.,．]\s*法律依据\s*$/s,
+    ],
+    strips: [/^\s*六[、.,．]\s*法律依据(\s*[：:]\s*|\s+)(.*)$/s, /^\s*六[、.,．]\s*法律依据\s*$/s],
+  },
+  {
+    kind: "basis",
+    friendly: true,
     match: new RegExp(`^\\s*${SEC_P5}法律依据`),
     flexStrips: [new RegExp(`^\\s*${SEC_P5}法律依据\\s*(.*)$`, "s")],
     strips: [
@@ -624,15 +859,32 @@ function textHasAnySectionHeader(text: string): boolean {
 /** 从一段文字中拆出后续小节（用于标题挤在同一行的情况） */
 function peelFollowingSection(
   content: string,
-  kind: "basis" | "risks" | "actionAdvice" | "actionSteps",
+  kind: "basis" | "risks" | "actionAdvice" | "actionSteps" | "keyFacts",
 ): { head: string; tail: string } {
   const patterns: Record<typeof kind, RegExp[]> = {
+    keyFacts: [
+      /(?<![0-9０-９])(?:(?:[2２]\s*(?:[)）]|[、,，]|[.．])\s*|[二]\s*[、,，.]\s*|2\s*\.)\s*)影响结果的关键事实\s*[：:]?\s*/,
+      /(?<![0-9０-９])影响结果的关键事实\s*[：:]?\s*/,
+      /(?<![0-9０-９])核心判断要点\s*[：:]?\s*/,
+      /(?<![0-9０-９])关键判断标准\s*[：:]?\s*/,
+      /(?<![0-9０-９])判断标准\s*[：:]?\s*/,
+      /(?<![0-9０-９])关键判断\s*[：:]?\s*/,
+      /(?<![0-9０-９])关键事实\s*[：:]?\s*/,
+    ],
     basis: [
+      /(?<![0-9０-９])(?:(?:[6６]\s*(?:[)）]|[、,，]|[.．])\s*|[六]\s*[、,，.]\s*|6\s*\.)\s*)法律依据\s*[：:]?\s*/,
+      /(?<![0-9０-９])六[、.,．]\s*法律依据\s*[：:]?\s*/,
       /(?<![0-9０-９])(?:(?:[5５]\s*(?:[)）]|[、,，]|[.．])\s*|[五]\s*[、,，.]\s*|5\s*\.)\s*)法律依据\s*[：:]?\s*/,
       /(?<![0-9０-９])(?:(?:[2２]\s*(?:[)）]|[、,，]|[.．])\s*|[二]\s*[、,，.]\s*|2\s*\.)\s*)依据\s*[：:]?\s*/,
       /(?<![0-9０-９])(?:(?:[2２]\s*(?:[)）]|[、,，]|[.．])\s*|[二]\s*[、,，.]\s*|2\s*\.)\s*)(?:引用依据|相关依据)\s*[：:]?\s*/,
     ],
     risks: [
+      /(?<![0-9０-９])(?:(?:[5５]\s*(?:[)）]|[、,，]|[.．])\s*|[五]\s*[、,，.]\s*|5\s*\.)\s*)需要注意\s*[：:]?\s*/,
+      /(?<![0-9０-９])五[、.,．]\s*需要注意\s*[：:]?\s*/,
+      /(?<![0-9０-９])特别说明\s*[：:]?\s*/,
+      /(?<![0-9０-９])注意事项\s*[：:]?\s*/,
+      /(?<![0-9０-９])对方可能的抗辩\s*[：:]?\s*/,
+      /(?<![0-9０-９])特殊风险\s*[：:]?\s*/,
       /(?<![0-9０-９])(?:(?:[3３]\s*(?:[)）]|[、,，]|[.．])\s*|[三]\s*[、,，.]\s*|3\s*\.)\s*)需要注意\s*[：:]?\s*/,
       /(?<![0-9０-９])三[、.,．]\s*需要注意\s*[：:]?\s*/,
       /(?<![0-9０-９])(?:(?:[3３]\s*(?:[)）]|[、,，]|[.．])\s*|[三]\s*[、,，.]\s*|3\s*\.)\s*)风险提示\s*[：:]?\s*/,
@@ -642,6 +894,10 @@ function peelFollowingSection(
       /(?<![0-9０-９])(?:(?:[3３]\s*(?:[)）]|[、,，]|[.．])\s*|[三]\s*[、,，.]\s*|3\s*\.)\s*)风险(?![点示])\s*[：:]?\s*/,
     ],
     actionAdvice: [
+      /(?<![0-9０-９])(?:(?:[3３]\s*(?:[)）]|[、,，]|[.．])\s*|[三]\s*[、,，.]\s*|3\s*\.)\s*)你现在可以这样处理\s*[：:]?\s*/,
+      /(?<![0-9０-９])你现在可以这样处理\s*[：:]?\s*/,
+      /(?<![0-9０-９])下一步建议\s*[：:]?\s*/,
+      /(?<![0-9０-９])处理建议\s*[：:]?\s*/,
       /(?<![0-9０-９])(?:(?:[2２]\s*(?:[)）]|[、,，]|[.．])\s*|[二]\s*[、,，.]\s*|2\s*\.)\s*)你现在最该做\s*[：:]?\s*/,
       /(?<![0-9０-９])(?:(?:[2２]\s*(?:[)）]|[、,，]|[.．])\s*|[二]\s*[、,，.]\s*|2\s*\.)\s*)现在最该做\s*[：:]?\s*/,
       /(?<![0-9０-９])(?:(?:[4４]\s*(?:[)）]|[、,，]|[.．])\s*|[四]\s*[、,，.]\s*|4\s*\.)\s*)建议\s*[：:]?\s*/,
@@ -650,6 +906,7 @@ function peelFollowingSection(
     actionSteps: [
       /(?<![0-9０-９])(?:(?:[4４]\s*(?:[)）]|[、,，]|[.．])\s*|[四]\s*[、,，.]\s*|4\s*\.)\s*)可执行操作步骤\s*[：:]?\s*/,
       /(?<![0-9０-９])(?:(?:[4４]\s*(?:[)）]|[、,，]|[.．])\s*|[四]\s*[、,，.]\s*|4\s*\.)\s*)(?:操作步骤|办理步骤|处理步骤|执行步骤|流程步骤)\s*[：:]?\s*/,
+      /(?<![0-9０-９])(?:维权步骤|索赔步骤|申请步骤)\s*[：:]?\s*/,
     ],
   };
   for (const rx of patterns[kind]) {
@@ -743,8 +1000,8 @@ function mergeTail(prefix: string, existing: string): string {
 
 function applyPeelChain(
   head: string,
-  kinds: Array<"basis" | "risks" | "actionAdvice" | "actionSteps">,
-  parts: { basis: string; risks: string; actionAdvice: string; actionSteps: string },
+  kinds: Array<"keyFacts" | "basis" | "risks" | "actionAdvice" | "actionSteps">,
+  parts: { basis: string; risks: string; actionAdvice: string; actionSteps: string; keyFacts: string },
 ): string {
   let h = head;
   for (const k of kinds) {
@@ -777,6 +1034,7 @@ function normalizeAnswer(answer: string): QwenAnswer {
   let sawFriendlyDetailTitles = false;
   const buckets: Record<SectionKind, string[]> = {
     conclusion: [],
+    keyFacts: [],
     basis: [],
     risks: [],
     actionAdvice: [],
@@ -792,7 +1050,7 @@ function normalizeAnswer(answer: string): QwenAnswer {
         buckets[mode].push(line);
         continue;
       }
-      if (rule.friendly || rule.kind === "actionSteps") sawFriendlyDetailTitles = true;
+      if (rule.friendly || rule.kind === "actionSteps" || rule.kind === "keyFacts") sawFriendlyDetailTitles = true;
       mode = rule.kind;
       if (rest) buckets[rule.kind].push(rest);
       continue;
@@ -801,16 +1059,20 @@ function normalizeAnswer(answer: string): QwenAnswer {
   }
 
   let conclusion = buckets.conclusion.join("\n").trim();
+  let keyFacts = buckets.keyFacts.join("\n").trim();
   let basis = buckets.basis.join("\n").trim();
   let risks = buckets.risks.join("\n").trim();
   let actionAdvice = buckets.actionAdvice.join("\n").trim();
   let actionSteps = buckets.actionSteps.join("\n").trim();
 
-  const parts = { basis, risks, actionAdvice, actionSteps };
-  conclusion = applyPeelChain(conclusion, ["basis", "risks", "actionAdvice", "actionSteps"], parts);
-  parts.basis = applyPeelChain(parts.basis, ["risks", "actionAdvice", "actionSteps"], parts);
-  parts.risks = applyPeelChain(parts.risks, ["actionAdvice", "actionSteps"], parts);
-  parts.actionAdvice = applyPeelChain(parts.actionAdvice, ["actionSteps"], parts);
+  const parts = { basis, risks, actionAdvice, actionSteps, keyFacts };
+  conclusion = applyPeelChain(conclusion, ["keyFacts", "actionAdvice", "actionSteps", "risks", "basis"], parts);
+  parts.keyFacts = applyPeelChain(parts.keyFacts, ["actionAdvice", "actionSteps", "risks", "basis"], parts);
+  parts.basis = applyPeelChain(parts.basis, ["keyFacts", "actionAdvice", "actionSteps", "risks"], parts);
+  parts.risks = applyPeelChain(parts.risks, ["actionAdvice", "actionSteps", "basis"], parts);
+  parts.actionAdvice = applyPeelChain(parts.actionAdvice, ["actionSteps", "risks", "basis"], parts);
+  parts.actionSteps = applyPeelChain(parts.actionSteps, ["risks", "basis"], parts);
+  keyFacts = parts.keyFacts;
   basis = parts.basis;
   risks = parts.risks;
   actionAdvice = parts.actionAdvice;
@@ -824,7 +1086,12 @@ function normalizeAnswer(answer: string): QwenAnswer {
   }
 
   const looksUnstructured =
-    !textHasAnySectionHeader(text) && !basis.trim() && !risks.trim() && !actionAdvice.trim() && !actionSteps.trim();
+    !textHasAnySectionHeader(text) &&
+    !keyFacts.trim() &&
+    !basis.trim() &&
+    !risks.trim() &&
+    !actionAdvice.trim() &&
+    !actionSteps.trim();
 
   if (looksUnstructured) {
     const fb = fallbackFourPart(text);
@@ -855,9 +1122,10 @@ function normalizeAnswer(answer: string): QwenAnswer {
 
   const d0 = sawFriendlyDetailTitles ? "法律依据" : "依据";
   const d1 = sawFriendlyDetailTitles ? "需要注意" : "风险点";
-  const d2 = sawFriendlyDetailTitles ? "你现在最该做" : "建议";
+  const d2 = sawFriendlyDetailTitles ? "你现在可以这样处理" : "建议";
 
-  return {
+  const keyFactsTrim = keyFacts.trim();
+  const out: QwenAnswer = {
     conclusion: conclusion.trim() || text,
     basis,
     risks,
@@ -869,6 +1137,8 @@ function normalizeAnswer(answer: string): QwenAnswer {
       { title: d2, content: actionAdvice },
     ],
   };
+  if (keyFactsTrim) out.keyFacts = keyFactsTrim;
+  return out;
 }
 
 function pickStr(obj: Record<string, unknown>, ...keys: string[]): string {
@@ -884,13 +1154,14 @@ function pickStr(obj: Record<string, unknown>, ...keys: string[]): string {
 function pickUrl(obj: Record<string, unknown>): string | null {
   const v = obj.source_url ?? obj.sourceUrl;
   if (v == null) return null;
-  const s = String(v).trim();
-  return s ? s : null;
+  return normalizeExternalUrl(String(v));
 }
 
 function normalizeSources(citations: NewRagResponse["citations"]): QwenKbSource[] {
+  const isDev = process.env.NODE_ENV === "development";
   const seen = new Set<number>();
   const result: QwenKbSource[] = [];
+  const debugRows: CitationUrlDebugRow[] = [];
   for (const raw of citations || []) {
     const item = raw as Record<string, unknown>;
     const id = parseRefIdToNumber(item.ref_id as string | undefined);
@@ -910,6 +1181,24 @@ function normalizeSources(citations: NewRagResponse["citations"]): QwenKbSource[
         : [lawName, article].filter((s) => s && s !== "未提供").join(" · ") || "未提供";
     const refRaw = item.ref_id != null ? String(item.ref_id).trim() : "";
     const refId = refRaw || `[${id}]`;
+    const uv = item.source_url ?? item.sourceUrl;
+    const urlApiRaw = uv == null ? null : String(uv);
+    const urlTrimOnly = uv == null ? null : (() => {
+      const t = String(uv).trim();
+      return t ? t : null;
+    })();
+    const urlNormalized = pickUrl(item);
+    if (isDev) {
+      debugRows.push({
+        id,
+        refIdRaw: item.ref_id != null ? String(item.ref_id) : "",
+        law: lawName,
+        chapterArticle: chapterArticleFromParts(chapter, article),
+        urlApiRaw,
+        urlTrimOnly,
+        urlNormalized,
+      });
+    }
     result.push({
       id,
       refId,
@@ -921,9 +1210,13 @@ function normalizeSources(citations: NewRagResponse["citations"]): QwenKbSource[
       chapter,
       article,
       text,
-      sourceUrl: pickUrl(item),
+      sourceUrl: urlNormalized,
       score: typeof item.score === "number" ? item.score : undefined,
     });
+  }
+  if (isDev && debugRows.length > 0) {
+    debugRows.sort((a, b) => a.id - b.id);
+    debugLogCitationUrls("normalizeSources(answer.citations)", debugRows);
   }
   return result.sort((a, b) => a.id - b.id);
 }
@@ -957,6 +1250,9 @@ function isAbortLikeError(error: unknown): boolean {
 }
 
 export default function NewFeatureChatPage() {
+  const router = useRouter();
+  const [authUser, setAuthUser] = useState<{ id: string; username: string; display_name: string } | null>(null);
+  const [authStatus, setAuthStatus] = useState<"checking" | "ready" | "denied">("checking");
   const [messages, setMessages] = useState<ChatItem[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -967,7 +1263,16 @@ export default function NewFeatureChatPage() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [sessionReady, setSessionReady] = useState(false);
   const [sessionSidebarCollapsed, setSessionSidebarCollapsed] = useState(false);
+  const [selectedCitation, setSelectedCitation] = useState<QwenKbSource | null>(null);
+  const [selectedCitationIndex, setSelectedCitationIndex] = useState<number | null>(null);
+  const [citationSidebarOpen, setCitationSidebarOpen] = useState(false);
   const [mobileSessionsOpen, setMobileSessionsOpen] = useState(false);
+
+  const closeCitationSidebar = useCallback(() => {
+    setCitationSidebarOpen(false);
+    setSelectedCitation(null);
+    setSelectedCitationIndex(null);
+  }, []);
   const activeSessionIdRef = useRef<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const currentGenerationIdRef = useRef(0);
@@ -983,33 +1288,136 @@ export default function NewFeatureChatPage() {
   }, [activeSessionId]);
 
   useEffect(() => {
-    const stored = getChatSessions();
-    const activeId = getActiveSessionId();
-    const session = activeId ? stored.find((s) => s.id === activeId) : undefined;
+    if (!citationSidebarOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeCitationSidebar();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [citationSidebarOpen, closeCitationSidebar]);
 
-    if (session) {
-      activeSessionIdRef.current = session.id;
-      setActiveSessionId(session.id);
-      setMessages(session.messages);
-      setLastQuestion(deriveLastQuestionFromMessages(session.messages));
-      setLastMeta(deriveLastMetaFromMessages(session.messages));
-    } else {
-      const newSess = createChatSession("新对话");
-      saveChatSessions([newSess, ...stored]);
-      persistActiveSessionId(newSess.id);
-      activeSessionIdRef.current = newSess.id;
-      setActiveSessionId(newSess.id);
-      setMessages([]);
-      setLastQuestion("");
-      setLastMeta(null);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const me = await fetchMe();
+        if (cancelled) return;
+        if (!me) {
+          setMessages([]);
+          setAuthStatus("denied");
+          router.replace("/login");
+          return;
+        }
+        setAuthUser(me);
+        setAuthStatus("ready");
+      } catch {
+        if (cancelled) return;
+        setMessages([]);
+        setAuthStatus("denied");
+        router.replace("/login");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
+
+  useEffect(() => {
+    if (authStatus !== "ready") return;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        if (typeof window !== "undefined") {
+          try {
+            window.localStorage.removeItem(LEGACY_CHAT_SESSIONS_STORAGE_KEY);
+          } catch {
+            /* ignore */
+          }
+        }
+
+        let list = await apiListSessions();
+        if (cancelled) return;
+
+        const applyDetail = async (sessionId: string) => {
+          const { session, messages } = await apiGetSessionMessages(sessionId);
+          if (cancelled) return;
+          persistActiveSessionId(session.id);
+          activeSessionIdRef.current = session.id;
+          setActiveSessionId(session.id);
+          setMessages(messages);
+          setLastQuestion(deriveLastQuestionFromMessages(messages));
+          setLastMeta(deriveLastMetaFromMessages(messages));
+        };
+
+        const createFresh = async () => {
+          const created = await apiCreateSession();
+          if (cancelled) return;
+          persistActiveSessionId(created.id);
+          activeSessionIdRef.current = created.id;
+          setActiveSessionId(created.id);
+          setMessages([]);
+          setLastQuestion("");
+          setLastMeta(null);
+        };
+
+        const storedActive = getActiveSessionId();
+        const preferred =
+          storedActive != null && list.some((s) => s.id === storedActive) ? storedActive : null;
+
+        try {
+          if (preferred != null) {
+            try {
+              await applyDetail(preferred);
+            } catch (e) {
+              if (isChatApiUnauthorized(e)) throw e;
+              list = await apiListSessions();
+              if (cancelled) return;
+              if (list.length > 0) {
+                await applyDetail(list[0].id);
+              } else {
+                await createFresh();
+              }
+            }
+          } else if (list.length > 0) {
+            await applyDetail(list[0].id);
+          } else {
+            await createFresh();
+          }
+        } catch (e) {
+          if (isChatApiUnauthorized(e)) throw e;
+          await createFresh();
+        }
+
+        list = await apiListSessions();
+        if (cancelled) return;
+        setSessions(list);
+      } catch (e) {
+        if (cancelled) return;
+        if (isChatApiUnauthorized(e)) {
+          router.replace("/login");
+          return;
+        }
+        setSessions([]);
+        setMessages([]);
+      } finally {
+        if (!cancelled) setSessionReady(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authStatus, router]);
+
+  const refreshSessionsList = useCallback(async () => {
+    try {
+      const list = await apiListSessions();
+      setSessions(list);
+    } catch (e) {
+      if (isChatApiUnauthorized(e)) router.replace("/login");
     }
-    setSessions(getChatSessions());
-    setSessionReady(true);
-  }, []);
-
-  const refreshSessionsList = useCallback(() => {
-    setSessions(getChatSessions());
-  }, []);
+  }, [router]);
 
   const stopGeneration = useCallback((opts?: { persistDraft?: boolean }) => {
     const persistDraft = opts?.persistDraft !== false;
@@ -1041,56 +1449,130 @@ export default function NewFeatureChatPage() {
         content: `${draftFull}\n\n（已停止生成，以上内容可能不完整。）`,
         createdAt: new Date().toISOString(),
       };
-      const all = getChatSessions();
-      const sess = all.find((s) => s.id === sessionForDraft);
-      if (sess) {
-        updateChatSession(sessionForDraft, { messages: [...sess.messages, msg] });
-      }
       if (activeSessionIdRef.current === sessionForDraft) {
         setMessages((prev) => [...prev, msg]);
       }
+      void (async () => {
+        try {
+          await apiAppendMessage(sessionForDraft, {
+            role: "assistant",
+            content: msg.content,
+            created_at: msg.createdAt,
+          });
+          await refreshSessionsList();
+        } catch (e) {
+          if (isChatApiUnauthorized(e)) router.replace("/login");
+        }
+      })();
     }
 
     setLoading(false);
     setStreamingEvents([]);
-    queueMicrotask(refreshSessionsList);
-  }, [refreshSessionsList]);
+    void refreshSessionsList();
+  }, [refreshSessionsList, router]);
 
-  const handleNewSession = useCallback(() => {
-    if (loading) {
-      stopGeneration({ persistDraft: true });
-    }
-    const newSess = createChatSession("新对话");
-    const rest = getChatSessions();
-    saveChatSessions([newSess, ...rest]);
-    persistActiveSessionId(newSess.id);
-    activeSessionIdRef.current = newSess.id;
-    setActiveSessionId(newSess.id);
+  const handleLogout = useCallback(async () => {
+    closeCitationSidebar();
+    stopGeneration({ persistDraft: false });
     setMessages([]);
     setInput("");
     setStreamingEvents([]);
     setLastMeta(null);
     setLastQuestion("");
-    setSessions(getChatSessions());
-  }, [loading, stopGeneration]);
+    setSessions([]);
+    setActiveSessionId(null);
+    persistActiveSessionId(null);
+    activeSessionIdRef.current = null;
+    setSessionReady(false);
+    setAuthUser(null);
+    setMobileSessionsOpen(false);
+    setCitationSidebarOpen(false);
+    setSelectedCitation(null);
+    setSelectedCitationIndex(null);
+    try {
+      await logoutRequest();
+    } catch {
+      /* 仍跳转登录页 */
+    }
+    router.replace("/login");
+  }, [router, stopGeneration, closeCitationSidebar]);
+
+  const handleNewSession = useCallback(() => {
+    closeCitationSidebar();
+    if (loading) {
+      stopGeneration({ persistDraft: true });
+    }
+    void (async () => {
+      try {
+        const created = await apiCreateSession();
+        persistActiveSessionId(created.id);
+        activeSessionIdRef.current = created.id;
+        setActiveSessionId(created.id);
+        setMessages([]);
+        setInput("");
+        setStreamingEvents([]);
+        setLastMeta(null);
+        setLastQuestion("");
+        await refreshSessionsList();
+      } catch (e) {
+        if (isChatApiUnauthorized(e)) router.replace("/login");
+      }
+    })();
+  }, [loading, stopGeneration, closeCitationSidebar, refreshSessionsList, router]);
 
   const handleSelectSession = useCallback(
     (sessionId: string) => {
+      closeCitationSidebar();
       if (loading) {
         stopGeneration({ persistDraft: true });
       }
-      const session = getChatSessions().find((s) => s.id === sessionId);
-      if (!session) return;
-      persistActiveSessionId(session.id);
-      activeSessionIdRef.current = session.id;
-      setActiveSessionId(session.id);
-      setMessages(session.messages);
-      setStreamingEvents([]);
-      setInput("");
-      setLastQuestion(deriveLastQuestionFromMessages(session.messages));
-      setLastMeta(deriveLastMetaFromMessages(session.messages));
+      void (async () => {
+        try {
+          const { session, messages } = await apiGetSessionMessages(sessionId);
+          persistActiveSessionId(session.id);
+          activeSessionIdRef.current = session.id;
+          setActiveSessionId(session.id);
+          setMessages(messages);
+          setStreamingEvents([]);
+          setInput("");
+          setLastQuestion(deriveLastQuestionFromMessages(messages));
+          setLastMeta(deriveLastMetaFromMessages(messages));
+          await refreshSessionsList();
+        } catch (e) {
+          if (isChatApiUnauthorized(e)) {
+            router.replace("/login");
+            return;
+          }
+          try {
+            let list = await apiListSessions();
+            if (list.length > 0) {
+              const first = await apiGetSessionMessages(list[0].id);
+              persistActiveSessionId(first.session.id);
+              activeSessionIdRef.current = first.session.id;
+              setActiveSessionId(first.session.id);
+              setMessages(first.messages);
+              setStreamingEvents([]);
+              setInput("");
+              setLastQuestion(deriveLastQuestionFromMessages(first.messages));
+              setLastMeta(deriveLastMetaFromMessages(first.messages));
+            } else {
+              const created = await apiCreateSession();
+              persistActiveSessionId(created.id);
+              activeSessionIdRef.current = created.id;
+              setActiveSessionId(created.id);
+              setMessages([]);
+              setLastQuestion("");
+              setLastMeta(null);
+            }
+            list = await apiListSessions();
+            setSessions(list);
+          } catch {
+            router.replace("/login");
+          }
+        }
+      })();
     },
-    [loading, stopGeneration],
+    [loading, stopGeneration, closeCitationSidebar, refreshSessionsList, router],
   );
 
   const handleSelectSessionMobile = useCallback(
@@ -1103,6 +1585,12 @@ export default function NewFeatureChatPage() {
 
   const toggleSessionSidebarCollapsed = useCallback(() => {
     setSessionSidebarCollapsed((c) => !c);
+  }, []);
+
+  const openCitationDetail = useCallback((source: QwenKbSource, index: number) => {
+    setSelectedCitation(source);
+    setSelectedCitationIndex(index);
+    setCitationSidebarOpen(true);
   }, []);
 
   const emptyHint = useMemo(() => "示例：竞业限制协议最多约定几年？", []);
@@ -1165,12 +1653,39 @@ export default function NewFeatureChatPage() {
     [streamingEvents],
   );
 
+  const persistAssistantMessage = useCallback(
+    async (sessionId: string, msg: ChatItem) => {
+      try {
+        const saved = await apiAppendMessage(sessionId, {
+          role: "assistant",
+          content: msg.content,
+          answer_card: msg.answerCard ?? null,
+          process_events: msg.processEvents ?? null,
+          created_at: msg.createdAt ?? null,
+        });
+        setMessages((prev) => {
+          const idx = prev.findIndex((m) => m.id === msg.id);
+          if (idx === -1) return prev;
+          const next = [...prev];
+          next[idx] = { ...next[idx], id: saved.id };
+          return next;
+        });
+        await refreshSessionsList();
+      } catch (e) {
+        if (isChatApiUnauthorized(e)) router.replace("/login");
+      }
+    },
+    [refreshSessionsList, router],
+  );
+
   const send = async (overrideQuestion?: string) => {
     const question = (overrideQuestion ?? input).trim();
     if (!question || loading || !sessionReady) return;
 
     const sessionIdAtStart = activeSessionIdRef.current;
     if (!sessionIdAtStart) return;
+
+    closeCitationSidebar();
 
     shouldAutoScrollRef.current = true;
 
@@ -1194,19 +1709,41 @@ export default function NewFeatureChatPage() {
       content: question,
       createdAt: nowIso,
     };
-    setMessages((prev) => {
-      const next = [...prev, userMsg];
-      const all = getChatSessions();
-      const sess = all.find((s) => s.id === sessionIdAtStart);
-      const needTitle =
-        sess != null && (sess.title === "新对话" || !String(sess.title ?? "").trim());
-      updateChatSession(sessionIdAtStart, {
-        messages: next,
-        ...(needTitle ? { title: generateSessionTitle(question) } : {}),
+    setMessages((prev) => [...prev, userMsg]);
+    try {
+      const savedUser = await apiAppendMessage(sessionIdAtStart, {
+        role: "user",
+        content: question,
+        created_at: userMsg.createdAt,
       });
-      return next;
-    });
-    queueMicrotask(refreshSessionsList);
+      setMessages((prev) => {
+        const next = [...prev];
+        const last = next[next.length - 1];
+        if (last?.role === "user") next[next.length - 1] = { ...last, id: savedUser.id };
+        return next;
+      });
+    } catch (e) {
+      if (isChatApiUnauthorized(e)) {
+        router.replace("/login");
+        setLoading(false);
+        return;
+      }
+      setMessages((prev) => prev.slice(0, -1));
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const listAfter = await apiListSessions();
+      const meta = listAfter.find((s) => s.id === sessionIdAtStart);
+      if (meta && (meta.title === "新对话" || !String(meta.title ?? "").trim())) {
+        await apiPatchSessionTitle(sessionIdAtStart, generateSessionTitle(question));
+      }
+      await refreshSessionsList();
+    } catch (e) {
+      if (isChatApiUnauthorized(e)) router.replace("/login");
+    }
+
     if (!overrideQuestion) {
       setInput("");
     }
@@ -1237,12 +1774,8 @@ export default function NewFeatureChatPage() {
           content: `调用失败：${detail}`,
           createdAt: new Date().toISOString(),
         };
-        setMessages((prev) => {
-          const next = [...prev, errMsg];
-          updateChatSession(sessionIdAtStart, { messages: next });
-          return next;
-        });
-        queueMicrotask(refreshSessionsList);
+        setMessages((prev) => [...prev, errMsg]);
+        void persistAssistantMessage(sessionIdAtStart, errMsg);
         return "error" as const;
       }
       if (ev.type === "answer" && !answerAttached && ev.data && typeof ev.data === "object") {
@@ -1280,12 +1813,8 @@ export default function NewFeatureChatPage() {
             retrievedCount,
           },
         };
-        setMessages((prev) => {
-          const next = [...prev, assistantMsg];
-          updateChatSession(sessionIdAtStart, { messages: next });
-          return next;
-        });
-        queueMicrotask(refreshSessionsList);
+        setMessages((prev) => [...prev, assistantMsg]);
+        void persistAssistantMessage(sessionIdAtStart, assistantMsg);
         setLastMeta({ model, retrievedCount });
       }
       return "continue" as const;
@@ -1312,7 +1841,15 @@ export default function NewFeatureChatPage() {
         headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
         body: JSON.stringify({ question, conversation_history }),
         signal: ac.signal,
+        credentials: "include",
       });
+      if (resp.status === 401) {
+        setMessages([]);
+        router.replace("/login");
+        setLoading(false);
+        setStreamingEvents([]);
+        return;
+      }
       if (!resp.ok) {
         const text = await resp.text();
         throw new Error(text ? text.slice(0, 500) : `HTTP ${resp.status}`);
@@ -1358,12 +1895,8 @@ export default function NewFeatureChatPage() {
           content: "调用失败：未收到完整回答（流已结束）。",
           createdAt: new Date().toISOString(),
         };
-        setMessages((prev) => {
-          const next = [...prev, incompleteMsg];
-          updateChatSession(sessionIdAtStart, { messages: next });
-          return next;
-        });
-        queueMicrotask(refreshSessionsList);
+        setMessages((prev) => [...prev, incompleteMsg]);
+        void persistAssistantMessage(sessionIdAtStart, incompleteMsg);
       }
     } catch (error) {
       if (isAbortLikeError(error)) {
@@ -1376,12 +1909,8 @@ export default function NewFeatureChatPage() {
           content: `调用失败：${msg}`,
           createdAt: new Date().toISOString(),
         };
-        setMessages((prev) => {
-          const next = [...prev, failMsg];
-          updateChatSession(sessionIdAtStart, { messages: next });
-          return next;
-        });
-        queueMicrotask(refreshSessionsList);
+        setMessages((prev) => [...prev, failMsg]);
+        void persistAssistantMessage(sessionIdAtStart, failMsg);
       }
     } finally {
       if (abortControllerRef.current === ac) {
@@ -1404,6 +1933,25 @@ export default function NewFeatureChatPage() {
     : "max-w-[min(100%,52rem)]";
   const userBubbleMaxClass = sessionSidebarCollapsed ? "max-w-[min(76%,44rem)]" : "max-w-[70%]";
   const composerMaxClass = sessionSidebarCollapsed ? "max-w-[860px]" : "max-w-[760px]";
+
+  if (authStatus === "checking") {
+    return (
+      <div className="flex min-h-screen w-full items-center justify-center bg-[var(--app-bg)] text-[var(--app-text-muted)]">
+        <p className="text-sm">验证登录…</p>
+      </div>
+    );
+  }
+  if (authStatus === "denied") {
+    return null;
+  }
+
+  if (authStatus === "ready" && !sessionReady) {
+    return (
+      <div className="flex min-h-screen w-full items-center justify-center bg-[var(--app-bg)] text-[var(--app-text-muted)]">
+        <p className="text-sm">加载会话…</p>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -1461,7 +2009,7 @@ export default function NewFeatureChatPage() {
           />
         </aside>
 
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--app-border)] bg-[var(--app-surface)]/95 px-3 py-2 md:hidden">
             <button
               type="button"
@@ -1471,30 +2019,74 @@ export default function NewFeatureChatPage() {
             >
               历史
             </button>
-            <span className="min-w-0 flex-1 text-center text-sm font-semibold text-[var(--app-text)]">对话</span>
-            <button
-              type="button"
-              title={loading ? "切换将停止当前生成" : undefined}
-              disabled={!sessionReady}
-              onClick={handleNewSession}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-gradient-to-br from-[var(--app-primary)] to-[var(--app-primary-strong)] px-3 py-2 text-xs font-medium text-white shadow-[var(--app-shadow-sm)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              <MessageSquarePlus className="size-3.5 shrink-0" aria-hidden />
-              新对话
-            </button>
+            <div className="flex min-w-0 flex-1 flex-col items-center justify-center px-1 text-center">
+              <span className="block text-sm font-semibold text-[var(--app-text)]">对话</span>
+              <span
+                className="mt-0.5 block max-w-full truncate text-[10px] text-[var(--app-text-muted)]"
+                title={authUser?.display_name}
+              >
+                {authUser?.display_name ?? ""}
+              </span>
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                title="退出登录"
+                onClick={() => void handleLogout()}
+                className="inline-flex size-9 items-center justify-center rounded-xl border border-[var(--app-border)] bg-white/90 text-[var(--app-text-muted)] shadow-[var(--app-shadow-sm)] transition hover:bg-[var(--app-surface-muted)] hover:text-[var(--app-text)]"
+              >
+                <LogOut className="size-4 shrink-0" aria-hidden />
+              </button>
+              <button
+                type="button"
+                title={loading ? "切换将停止当前生成" : undefined}
+                disabled={!sessionReady}
+                onClick={handleNewSession}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-gradient-to-br from-[var(--app-primary)] to-[var(--app-primary-strong)] px-3 py-2 text-xs font-medium text-white shadow-[var(--app-shadow-sm)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                <MessageSquarePlus className="size-3.5 shrink-0" aria-hidden />
+                新对话
+              </button>
+            </div>
           </div>
 
           <div
             className={cn(
-              "mx-auto flex min-h-10 w-full shrink-0 items-center justify-end px-5 py-2 md:px-8",
+              "mx-auto flex min-h-10 w-full shrink-0 items-center gap-2 px-5 py-2 md:px-8",
+              "justify-end lg:justify-between",
               chatContentMaxClass,
             )}
           >
-            <div
-              className="max-w-full truncate rounded-full border border-[var(--app-border)] bg-[var(--app-surface)]/90 px-2.5 py-0.5 text-[11px] leading-tight text-[var(--app-text-muted)]"
-              title={topStatusBarLabel}
+            <button
+              type="button"
+              className="hidden shrink-0 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)]/90 px-2.5 py-1 text-[11px] font-medium text-[var(--app-text-muted)] shadow-[var(--app-shadow-sm)] transition hover:bg-[var(--app-surface-muted)] hover:text-[var(--app-text)] lg:inline-flex"
+              aria-expanded={citationSidebarOpen}
+              aria-controls="citation-detail-sidebar"
+              onClick={() => {
+                if (citationSidebarOpen) closeCitationSidebar();
+                else setCitationSidebarOpen(true);
+              }}
             >
-              {topStatusBarLabel}
+              {citationSidebarOpen ? "收起引用栏" : "引用详情"}
+            </button>
+            <div className="flex min-w-0 flex-1 items-center justify-end gap-2" title={topStatusBarLabel}>
+              <span
+                className="hidden max-w-[10rem] truncate text-[11px] text-[var(--app-text-muted)] lg:inline"
+                title={authUser?.display_name}
+              >
+                {authUser?.display_name ?? ""}
+              </span>
+              <button
+                type="button"
+                onClick={() => void handleLogout()}
+                className="hidden shrink-0 items-center gap-1 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)]/90 px-2 py-1 text-[11px] font-medium text-[var(--app-text-muted)] shadow-[var(--app-shadow-sm)] transition hover:bg-[var(--app-surface-muted)] hover:text-[var(--app-text)] lg:inline-flex"
+              >
+                <LogOut className="size-3.5 shrink-0" aria-hidden />
+                退出
+              </button>
+              <span className="max-w-full truncate rounded-full border border-[var(--app-border)] bg-[var(--app-surface)]/90 px-2.5 py-0.5 text-[11px] leading-tight text-[var(--app-text-muted)]">
+                {topStatusBarLabel}
+              </span>
             </div>
           </div>
 
@@ -1504,7 +2096,7 @@ export default function NewFeatureChatPage() {
             className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto scroll-pb-4"
           >
             <div className={cn("mx-auto w-full px-5 pb-4 pt-1 md:px-8", chatContentMaxClass)}>
-              <div className="space-y-4 rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)]/90 p-5 shadow-[var(--app-shadow-sm)] backdrop-blur-sm">
+              <div className="space-y-8 pb-2 pt-1">
                 {messages.length === 0 ? (
                   <div className="space-y-2 rounded-xl border border-dashed border-[var(--app-border)] bg-[var(--app-surface-muted)] p-4">
                     <p className="text-xs leading-relaxed text-[var(--app-text-muted)]">
@@ -1553,6 +2145,8 @@ export default function NewFeatureChatPage() {
                               onFeedback={() => {
                                 // reserved for feedback API hook
                               }}
+                              onCitationClick={openCitationDetail}
+                              onSourceClick={openCitationDetail}
                             />
                           </div>
                         ) : (
@@ -1593,6 +2187,8 @@ export default function NewFeatureChatPage() {
                           onFeedback={() => {
                             // reserved for feedback API hook
                           }}
+                          onCitationClick={openCitationDetail}
+                          onSourceClick={openCitationDetail}
                         />
                       ) : null}
                     </div>
@@ -1649,7 +2245,25 @@ export default function NewFeatureChatPage() {
               </button>
             </div>
           </div>
-        </div>
+        </main>
+
+        <aside
+          id="citation-detail-sidebar"
+          aria-hidden={!citationSidebarOpen}
+          className={cn(
+            "hidden h-full min-h-0 shrink-0 overflow-hidden border-[var(--app-border)] bg-white transition-[width] duration-200 ease-out dark:bg-[var(--app-surface)] lg:flex lg:flex-col",
+            citationSidebarOpen ? "w-[380px] border-l" : "w-0 border-l-0",
+          )}
+        >
+          {citationSidebarOpen ? (
+            <CitationSidePanel
+              open={citationSidebarOpen}
+              onClose={closeCitationSidebar}
+              source={selectedCitation}
+              citationIndex={selectedCitationIndex}
+            />
+          ) : null}
+        </aside>
       </div>
     </>
   );

@@ -145,7 +145,7 @@ export type ChatItem = {
   createdAt?: string;
 };
 
-/** 本地会话容器（localStorage v1） */
+/** 会话列表项（消息可在详情接口单独加载；兼容侧边栏展示） */
 export type ChatSession = {
   schemaVersion: 1;
   id: string;

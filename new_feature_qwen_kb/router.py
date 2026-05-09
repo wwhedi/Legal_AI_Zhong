@@ -5,12 +5,14 @@ import logging
 import os
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Literal, Optional
+from typing import Annotated, Any, Dict, List, Literal, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from auth.config import AuthUserRecord
+from auth.dependencies import get_current_user
 from new_feature_qwen_kb.service import QwenKBRagService
 
 logger = logging.getLogger(__name__)
@@ -66,7 +68,10 @@ class NewRagAskResponse(BaseModel):
 
 
 @router.post("/ask", response_model=NewRagAskResponse)
-async def ask_new_rag(req: NewRagAskRequest) -> NewRagAskResponse:
+async def ask_new_rag(
+    req: NewRagAskRequest,
+    current_user: Annotated[AuthUserRecord, Depends(get_current_user)],
+) -> NewRagAskResponse:
     svc = QwenKBRagService()
     try:
         result = await svc.ask(req.question, req.conversation_history or [])
@@ -85,7 +90,10 @@ async def ask_new_rag(req: NewRagAskRequest) -> NewRagAskResponse:
 
 
 @router.post("/ask-stream")
-async def ask_new_rag_stream(req: NewRagAskRequest) -> StreamingResponse:
+async def ask_new_rag_stream(
+    req: NewRagAskRequest,
+    current_user: Annotated[AuthUserRecord, Depends(get_current_user)],
+) -> StreamingResponse:
     svc = QwenKBRagService()
 
     async def ndjson_body():
