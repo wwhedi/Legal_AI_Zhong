@@ -147,6 +147,18 @@ LAW_TYPE_LABEL_CN: Dict[str, str] = {
     "duobian": "多边条约",
 }
 
+_LEGAL_AI_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _kb_update_db_path() -> Path:
+    raw = os.environ.get("KB_UPDATE_DB_PATH", "").strip()
+    if not raw:
+        return _LEGAL_AI_ROOT / "data" / "kb_update.db"
+    p = Path(raw)
+    if p.is_absolute():
+        return p.resolve()
+    return (_LEGAL_AI_ROOT / p).resolve()
+
 
 def _validate_report_path_for_job(job: JobData) -> tuple[bool, Path, str]:
     """
@@ -168,7 +180,6 @@ JOB_STORE: Dict[str, JobData] = {}
 TASK_STORE: Dict[str, asyncio.Task] = {}
 PROCESS_STORE: Dict[str, asyncio.subprocess.Process] = {}
 STORE_LOCK = asyncio.Lock()
-DB_PATH = Path(__file__).resolve().parents[1] / "data" / "kb_update.db"
 
 STEP_LABELS = {
     "env_check": "环境与目录检查",
@@ -182,13 +193,14 @@ STEP_LABELS = {
 
 
 def _db_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(DB_PATH), timeout=10)
+    conn = sqlite3.connect(str(_kb_update_db_path()), timeout=10)
     conn.row_factory = sqlite3.Row
     return conn
 
 
 def _init_db() -> None:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    db_path = _kb_update_db_path()
+    db_path.parent.mkdir(parents=True, exist_ok=True)
     with _db_conn() as conn:
         conn.executescript(
             """

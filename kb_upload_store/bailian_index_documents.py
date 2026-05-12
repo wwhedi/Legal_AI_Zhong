@@ -566,3 +566,66 @@ def plan_old_version_delete_dry_run(
         ],
     }
 
+
+def delete_index_document_call_succeeded(norm: Dict[str, Any]) -> bool:
+    """DeleteIndexDocument 响应是否表示业务成功。"""
+    if _ci_get(norm, "success", None) is True:
+        return True
+    code = str(_ci_get(norm, "code", "Code") or "").strip()
+    if code.casefold() in ("success", "200", "ok"):
+        return True
+    meta = _ci_get(norm, "_meta", {}) or {}
+    http = _ci_get(meta, "status_code", None)
+    try:
+        if http is not None and int(http) == 200 and not code:
+            return True
+    except (TypeError, ValueError):
+        pass
+    return False
+
+
+def delete_index_documents_batch(
+    workspace_id: str,
+    index_id: str,
+    document_ids: List[str],
+) -> Dict[str, Any]:
+    """
+    调用 DeleteIndexDocument（一批 document_ids）。
+    返回 normalize_openapi_response 字典。
+    """
+    if not document_ids:
+        return {}
+    client = create_bailian_client()
+    if not hasattr(client, "delete_index_document_with_options"):
+        raise RuntimeError(
+            "当前 SDK Client 缺少 delete_index_document_with_options，请升级：pip install -U alibabacloud-bailian20231229"
+        )
+    try:
+        from alibabacloud_bailian20231229 import models as bailian_models
+        from alibabacloud_tea_util import models as util_models
+    except Exception as e:
+        raise RuntimeError(f"SDK 模型导入失败：{e}") from e
+
+    req = bailian_models.DeleteIndexDocumentRequest()
+    req.index_id = index_id
+    req.document_ids = list(document_ids)
+
+    runtime = util_models.RuntimeOptions()
+    method = client.delete_index_document_with_options
+    sig = inspect.signature(method)
+    kwargs: Dict[str, Any] = {}
+    for name, p in sig.parameters.items():
+        n = name.lower()
+        if "workspace" in n:
+            kwargs[name] = workspace_id
+        elif "request" in n or n == "tmp_req":
+            kwargs[name] = req
+        elif n == "headers":
+            kwargs[name] = {}
+        elif n == "runtime":
+            kwargs[name] = runtime
+        elif p.default is inspect._empty:
+            raise RuntimeError(f"delete_index_document_with_options 未知必填参数：{name}")
+    resp = method(**kwargs)
+    return normalize_openapi_response(resp)
+

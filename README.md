@@ -1,6 +1,6 @@
 # Legal_AI
 
-仓库主体在 **`Legal_AI_Zhong/`**（下文路径均相对于该目录）。
+仓库根目录为 **`Legal_AI/`**（下文路径均相对于该目录）。
 
 ## 能力概览
 
@@ -8,7 +8,7 @@
 
 - **后端**：`api/kb_update_api.py`，前缀 **`/kb-update`**。
 - **执行**：按任务步骤异步拉起 **`law_spider/*.py`** 爬虫子进程，日志写入任务对象。
-- **持久化**：Python **`sqlite3`**，数据库文件 **`data/kb_update.db`**。
+- **持久化**：Python **`sqlite3`**，默认数据库文件 **`data/kb_update.db`**；可通过环境变量 **`KB_UPDATE_DB_PATH`** 覆盖（绝对路径，或相对于项目根的相对路径）。
 - **前端**：Next.js 路由 **`/kb-update`**（首页、新建向导、历史、单任务运行与结果页）。
 
 ### b. 百炼知识库 Retrieve
@@ -48,7 +48,7 @@ LOCAL_MODEL_NAME=qwen2.5:7b
 
 ### 后端
 
-需 **Python 3.11+**。在 **`Legal_AI_Zhong`** 下：
+需 **Python 3.11+**。在 **`Legal_AI`** 下：
 
 ```powershell
 python -m venv .venv
@@ -58,11 +58,29 @@ pip install -r requirements.txt
 uvicorn api.main:app --host 127.0.0.1 --port 8000
 ```
 
+**Linux / 生产服务器（后端依赖）**：请使用 **`requirements-server.txt`** 安装依赖（与 `requirements.txt` 一致，但**不含** `pywin32`，避免在 Linux 上安装失败）。Windows 本地开发仍使用 `requirements.txt`。
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -U pip
+pip install -r requirements-server.txt
+uvicorn api.main:app --host 0.0.0.0 --port 8000
+```
+
+**与部署相关的环境变量（后端 `.env`）**：
+
+| 变量 | 说明 |
+|------|------|
+| **`CORS_ALLOW_ORIGINS`** | 逗号分隔的浏览器 Origin，例如 `https://app.example.com,https://www.example.com`。**未设置**时仍为本地开发默认：`http://localhost:3000`、`http://127.0.0.1:3000`。 |
+| **`KB_UPDATE_DB_PATH`** | KB 更新任务 SQLite 文件路径；未设置时为项目下 `data/kb_update.db`。 |
+| **`CHAT_DB_PATH`** | 聊天会话库路径（可选）；见 `chat_store/db.py`。 |
+
 打开 **`http://127.0.0.1:8000/docs`** 可调试 **`POST /new-rag/ask`** 与 **`/kb-update`** 等接口。
 
 ### 前端
 
-在 **`Legal_AI_Zhong/frontend`** 下：
+在 **`Legal_AI/frontend`** 下：
 
 ```powershell
 npm install
@@ -78,4 +96,4 @@ npm run dev
 
 浏览器访问 **`http://localhost:3000`**。
 
-> `api/main.py` 已对 **`http://localhost:3000`** / **`http://127.0.0.1:3000`** 启用 CORS。
+> `api/main.py` 默认对上述两个本地 Origin 启用 CORS；生产环境请设置 **`CORS_ALLOW_ORIGINS`**（见上表）。

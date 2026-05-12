@@ -1,0 +1,36 @@
+# Frontend — build context must be Legal_AI/ repository root (same as backend).
+# docker compose -f deploy/docker-compose.yml build frontend
+FROM node:20-bookworm-slim AS builder
+
+WORKDIR /app/frontend
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+
+COPY frontend/ ./
+
+ARG NEXT_PUBLIC_API_BASE_URL=/api
+ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
+
+RUN npm run build
+
+FROM node:20-bookworm-slim AS runner
+
+WORKDIR /app/frontend
+
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/frontend ./
+
+EXPOSE 3000
+
+CMD ["npx", "next", "start", "-H", "0.0.0.0", "-p", "3000"]

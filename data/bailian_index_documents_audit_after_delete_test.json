@@ -1,0 +1,1282 @@
+{
+  "generated_at_utc": "2026-05-11T01:11:38.793101+00:00",
+  "workspace_id": "llm-nshmuw81l63lm30x",
+  "index_id": "pp4vdh5x5a",
+  "total_remote_documents": 724,
+  "total_remote_total_count_reported": 724,
+  "list_meta": {
+    "pages_fetched": 15,
+    "last_page_empty": false,
+    "total_fetched": 724
+  },
+  "total_local_records": 6,
+  "matched_count": 6,
+  "unmatched_remote_count": 718,
+  "unmatched_local_count": 0,
+  "matches": [
+    {
+      "law_id": "bbbs:2c909fdd678bf17901678bf594240005",
+      "version_hash": "c2a4f6e367d9a4ff7d5e682b5cea71c0add989426c1e4342048ecac49912071b",
+      "local_bailian_file_id": "file_a116508f620943da9c2a8a07994ab3c8_13113074",
+      "local_bailian_job_id": "32c7970a388a46f6b9fa2e357a5979b1",
+      "remote_document_id": "file_a116508f620943da9c2a8a07994ab3c8_13113074",
+      "remote_document_name": "中华人民共和国宪法修正案（1988年）__1988-04-12__2c909fdd678bf17901678bf594240005",
+      "remote_status": "FINISH",
+      "match_method": "A_remote.Id_eq_local.bailian_file_id"
+    },
+    {
+      "law_id": "bbbs:2c909fdd678bf17901678bf59c0d000f",
+      "version_hash": "9ebe8a4ac9c21f0e8f69e228a79811de9b8c22d9a448f7527e6f6aaef31d2492",
+      "local_bailian_file_id": "file_11cc91572a664c55bcc4c36e9644c40f_13113074",
+      "local_bailian_job_id": "32c7970a388a46f6b9fa2e357a5979b1",
+      "remote_document_id": "file_11cc91572a664c55bcc4c36e9644c40f_13113074",
+      "remote_document_name": "中华人民共和国宪法修正案（1993年）__1993-03-29__2c909fdd678bf17901678bf59c0d000f",
+      "remote_status": "FINISH",
+      "match_method": "A_remote.Id_eq_local.bailian_file_id"
+    },
+    {
+      "law_id": "bbbs:2c909fdd678bf17901678bf59c9e0019",
+      "version_hash": "334e63e14dd050a3f95e37355dc9de812caad4a72675e61aae074215f58f13b5",
+      "local_bailian_file_id": "file_a0b5fa3c42b2405bb406374938cc847a_13113074",
+      "local_bailian_job_id": "32c7970a388a46f6b9fa2e357a5979b1",
+      "remote_document_id": "file_a0b5fa3c42b2405bb406374938cc847a_13113074",
+      "remote_document_name": "中华人民共和国宪法修正案（1999年）__1999-03-15__2c909fdd678bf17901678bf59c9e0019",
+      "remote_status": "FINISH",
+      "match_method": "A_remote.Id_eq_local.bailian_file_id"
+    },
+    {
+      "law_id": "bbbs:2c909fdd678bf17901678bf59d420023",
+      "version_hash": "1c722d9d57beebb10fae81864678ce9770febb22c8b77d2ede1306a46e5a675c",
+      "local_bailian_file_id": "file_2a0be469f4144fd4a2ff11c8cbd26141_13113074",
+      "local_bailian_job_id": "32c7970a388a46f6b9fa2e357a5979b1",
+      "remote_document_id": "file_2a0be469f4144fd4a2ff11c8cbd26141_13113074",
+      "remote_document_name": "中华人民共和国宪法修正案（2004年）__2004-03-14__2c909fdd678bf17901678bf59d420023",
+      "remote_status": "FINISH",
+      "match_method": "A_remote.Id_eq_local.bailian_file_id"
+    },
+    {
+      "law_id": "bbbs:2c909fdd678bf17901678bf59eb80037",
+      "version_hash": "9fa1c46c8c9829f4c82859a367174cf12ccb2fe7dbc1d24e17d321f972ee983e",
+      "local_bailian_file_id": "file_02d14035e59d4f29afe39a112de2b6bd_13113074",
+      "local_bailian_job_id": "32c7970a388a46f6b9fa2e357a5979b1",
+      "remote_document_id": "file_02d14035e59d4f29afe39a112de2b6bd_13113074",
+      "remote_document_name": "中华人民共和国宪法（1982年）__1982-12-04__2c909fdd678bf17901678bf59eb80037",
+      "remote_status": "FINISH",
+      "match_method": "A_remote.Id_eq_local.bailian_file_id"
+    },
+    {
+      "law_id": "bbbs:2c909fdd678bf17901678bf5a483004b",
+      "version_hash": "e53c3ce0f07fecd985fa6e40117feee91bad49ce0eb67bc004b049bae59ecd91",
+      "local_bailian_file_id": "file_0d1beb106fb24c3f93bdc5e73284f517_13113074",
+      "local_bailian_job_id": "32c7970a388a46f6b9fa2e357a5979b1",
+      "remote_document_id": "file_0d1beb106fb24c3f93bdc5e73284f517_13113074",
+      "remote_document_name": "中华人民共和国宪法（2018年修正文本）__2018-03-11__2c909fdd678bf17901678bf5a483004b",
+      "remote_status": "FINISH",
+      "match_method": "A_remote.Id_eq_local.bailian_file_id"
+    }
+  ],
+  "unmatched_remote_documents_sample": [
+    {
+      "remote_document_id": "file_786f0e791af84c63849d5baa21512304_13113074",
+      "remote_document_name": "企业系统入口导航字典",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d2390262144646d1b04aaf3d355d9da9_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于中国人民解放军保卫部门对军队内部发生的刑事案件行使公安机关的侦查、拘留、预审和执行逮捕的职权的决定__unknown-date__ff808081774c72b30177711d29c21e27",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_cf782ee22f83467e92027f3c9ca308da_13113074",
+      "remote_document_name": "中华人民共和国外国中央银行财产司法强制措施豁免法__2005-10-25__2c909fdd678bf17901678bf634330311",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_de813de1f1a3488b975f37f8693440c4_13113074",
+      "remote_document_name": "全国人民代表大会关于设立香港特别行政区的决定__unknown-date__ff808081774c7a3d0177709504c31a29",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_da718a2131984b5eb018043b299ecd67_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于澳门特别行政区2013年立法会产生办法和2014年行政长官产生办法有关问题的决定__unknown-date__ff808081774c72b301776fb8b7fd1816",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d3167d259a0a4297b3300db8f2e67c9b_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于授权在部分地区开展人民陪审员制度改革试点工作的决定（失效）__2015-04-24__ff808081774c72b30177717074b71ffe",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d393c5c9cf9240318e937cd23346a75f_13113074",
+      "remote_document_name": "全国人民代表大会关于授权汕头市和珠海市人民代表大会及其常务委员会、人民政府分别制定法规和规章在各自的经济特区实施的决定__unknown-date__ff808081774c7a3d0177709bf3871a44",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_f7dfcc83ffd74f2693ae64f851ae6c0c_13113074",
+      "remote_document_name": "中华人民共和国节约能源法__2018-10-26__ff8080816f135f46016f1cfbf44a1258",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_c760900f4fcf4e32856678b323de7b08_13113074",
+      "remote_document_name": "中华人民共和国科学技术普及法__2024-12-25__ff808181927b083b0193fda4bead02ee",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_e95dd17ec97541fea74c9187bee9b150_13113074",
+      "remote_document_name": "中华人民共和国环境影响评价法__2018-12-29__ff8080816f135f46016f20e89eff170a",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_f820bd059f9b473daad7d8ff4fee7d31_13113074",
+      "remote_document_name": "中华人民共和国增值税法__2024-12-25__ff808181927b083b0193fd65a0eb02cb",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_e8e26533a1724b5190f824069e6d42e9_13113074",
+      "remote_document_name": "中华人民共和国水土保持法__2010-12-25__2c909fdd678bf17901678bf7163c05d7",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_e7ecfbff80744083b9601de6c12f4008_13113074",
+      "remote_document_name": "中华人民共和国保守国家秘密法__2024-02-27__ff8081818d6a4464018de9f8ab7511e3",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_e95cb42e15ab42c5b82e085e40e92240_13113074",
+      "remote_document_name": "中华人民共和国全国人民代表大会组织法__1982-12-10__2c909fdd678bf17901678bf5ad3f0091",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_ffdf9667e6754b43a53c5a8ea608684d_13113074",
+      "remote_document_name": "全国人民代表大会关于《中华人民共和国香港特别行政区基本法》的决定__unknown-date__ff808081774c7a3d01777a09c4bb220e",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_fbd84e85def848f9959a4a1f218b733a_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于授权澳门特别行政区对设在横琴岛的澳门大学新校区实施管辖的决定__unknown-date__ff808081774c7a3d01777164964c1e1b",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d19ffc10314c4e4b9367fb94bf69661c_13113074",
+      "remote_document_name": "中华人民共和国车船税法__2019-04-23__ff8080816f135f46016f215dc4071a64",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_ed9e0c8e476c4e1881834c2fbe52d086_13113074",
+      "remote_document_name": "台湾省出席第十三届全国人民代表大会代表协商选举方案（失效）__2017-04-27__ff808081774c72b30177709c1bb61b79",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_f017d4a0266c4592bfa44c8a6c72b230_13113074",
+      "remote_document_name": "中华人民共和国全国人民代表大会议事规则__2021-03-11__ff80808177e75f88017823fdf7d73bf1",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_e25dde35bb104b3590dfe5a1d4ab2cc6_13113074",
+      "remote_document_name": "中华人民共和国人民调解法__2010-08-28__2c909fdd678bf17901678bf7105c05af",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_ca7d34a6778a48c28b640b8d07f97337_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于授权国务院在广东省暂时调整部分法律规定的行政审批的决定（失效）__2012-12-28__ff808081774c7a3d0177703f89d619e1",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_f9eecdded77548e2ae1146ba5ad8fe38_13113074",
+      "remote_document_name": "中华人民共和国档案法__2020-06-20__ff80808172b5f24f0172e4ef05e218d4",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d990696a12ee493187de5cb7b414f51d_13113074",
+      "remote_document_name": "第七届全国人民代表大会第一次会议关于建立海南经济特区的决议__unknown-date__ff808081777d0c940177843debf60846",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_ec89a24a769244f9ab8b68d362b080a6_13113074",
+      "remote_document_name": "中华人民共和国全国人民代表大会议事规则__1989-04-04__2c909fdd678bf17901678bf5c0ba00e1",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_f6cf2dc7737e473cba4b949ddbfd36dd_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于第十三届全国人民代表大会第三次会议召开时间的决定__unknown-date__ff8080817703add20177194a9086201b",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_e67fb948ada44019a38f6eb354e62002_13113074",
+      "remote_document_name": "中华人民共和国专属经济区和大陆架法__1998-06-26__2c909fdd678bf17901678bf5eaf60203",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d62e5d7c29674a67a4a2cf30b55a5d5e_13113074",
+      "remote_document_name": "中华人民共和国企业国有资产法__2008-10-28__2c909fdd678bf17901678bf653fb03c5",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_cb04cd129cab4057a274433eefe98630_13113074",
+      "remote_document_name": "中华人民共和国外交特权与豁免条例__1986-09-05__2c909fdd678bf17901678bf5b0d600c3",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_f192f58108f94156ab5df7c335124684_13113074",
+      "remote_document_name": "中华人民共和国就业促进法__2015-04-24__2c909fdd678bf17901678bf7b34f07df",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_fe7f7aac74514b348b19c157dc06cc32_13113074",
+      "remote_document_name": "中华人民共和国广告法__2015-04-24__2c909fdd678bf17901678bf78bef077b",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_deb292e250d74862b14f368fc718dc0f_13113074",
+      "remote_document_name": "第十三届全国人民代表大会第一次会议关于设立第十三届全国人民代表大会专门委员会的决定（失效）__2018-03-13__ff80808176f4df370177193f6b7e35bc",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_c068ddb5d13541ff9d358ebfd93e8124_13113074",
+      "remote_document_name": "中华人民共和国外资企业法__2016-09-03__2c909fdd678bf17901678bf82132091f",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_f6a1ce250be4415795abb1ae570547af_13113074",
+      "remote_document_name": "全国人民代表大会关于《中华人民共和国澳门特别行政区基本法》的决定__unknown-date__ff808081774c72b301777a04a9f72356",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d9b81071afec4bbeb496014b82f4c7c0_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于授权国务院在自由贸易试验区暂时调整适用有关法律规定的决定（失效）__2021-04-29__ff808181791904c601792098bbb9033a",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_f53b2d3dddaf480fa2eee596dc675dd3_13113074",
+      "remote_document_name": "中华人民共和国献血法__1997-12-29__2c909fdd678bf17901678bf5e71801f9",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_f90ac6b60c934d5c865caf0cbcd07012_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于授权国务院在部分地区和部分在京中央机关暂时调整适用《中华人民共和国公务员法》有关规定的决定（失效）__2016-12-25__ff808081774c7a3d0177702585921939",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_ddb143b315bd4eb1b7b5e791854e30f3_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于授权国务院在中国（新疆）自由贸易试验区暂时调整适用《中华人民共和国种子法》有关规定的决定__2025-04-30__ff808181966737700196865371d12ab8",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d187f2c84a514222a2c9ad045d7c5641_13113074",
+      "remote_document_name": "中华人民共和国法官法__2017-09-01__2c909fdd678bf17901678bf85fc60a37",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_fefe238a4a73455ba1a515f4d4c9d343_13113074",
+      "remote_document_name": "全国人民代表大会关于批准澳门特别行政区基本法起草委员会关于设立全国人民代表大会常务委员会澳门特别行政区基本法委员会的建议的决定__unknown-date__ff808081777d07c50177804bcf5c0413",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_fafcea63e0a54f35ac5464db84251b02_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于授权香港特别行政区对深圳湾口岸港方口岸区实施管辖的决定__unknown-date__ff808081774c7a3d0177716f2eea1e57",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d19c02825d434009b34ba5b613234964_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于国务院机构改革涉及法律规定的行政机关职责调整问题的决定__unknown-date__ff80808176f4df37017719534acb3623",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_eb5fd8d4c6ec4a38bea37cc004c6f8cc_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于积极应对气候变化的决议__2009-08-27__ca49811ecb194d6a8f8866eaf25b3049",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d13d5308fe3f43bcb80d01e575f01579_13113074",
+      "remote_document_name": "中华人民共和国水污染防治法__2017-06-27__2c909fdd678bf17901678bf8504509fb",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_fc6f3fa79bef4cd99fa3bff215cd1d9d_13113074",
+      "remote_document_name": "中华人民共和国基本医疗卫生与健康促进法__2019-12-28__ff80808171e9e18101727e38094d7e07",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_c738d4f6fe794946a1c66c969f313e13_13113074",
+      "remote_document_name": "中华人民共和国科学技术普及法__2002-06-29__2c909fdd678bf17901678bf6149102a3",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_ce994b0cd68142cdb9450e4fc9e3fbb2_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于修改《中华人民共和国种子法》的决定__2021-12-24__ff8081817dea9c18017dec5d424c0210",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_cdc5c1180ab94b41b4da0adaf32efa05_13113074",
+      "remote_document_name": "中华人民共和国社会保险法__2018-12-29__ff8080816f135f46016f210989b9179a",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d828280f8f6d4fc0a5c7f02bb97515da_13113074",
+      "remote_document_name": "中华人民共和国海南自由贸易港法__2021-06-10__ff80818179f5da5e0179f88beb640406",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_dcaccbe3971d4c62a29db40116968ad5_13113074",
+      "remote_document_name": "中华人民共和国产品质量法__2009-08-27__2c909fdd678bf17901678bf6fc050519",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_e77d9e728858465eae4ce5cebbadf1cb_13113074",
+      "remote_document_name": "中华人民共和国民用航空法__2017-11-04__2c909fdd678bf17901678bf887110ae1",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_cb48e94610cb4b44939d2a4e7090b472_13113074",
+      "remote_document_name": "中华人民共和国地方各级人民代表大会和地方各级人民政府组织法__2022-03-11__ff8081817f48d8de017f71b0aac01019",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_c3156d86ec5f4529846292e973c12057_13113074",
+      "remote_document_name": "中华人民共和国海关法__2017-11-04__2c909fdd678bf17901678bf87f3b0ac3",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_ed937d147b3c4ec8b54cb6af6fd631dc_13113074",
+      "remote_document_name": "中华人民共和国地方各级人民代表大会和地方各级人民政府组织法__2015-08-29__2c909fdd678bf17901678bf7e3f6084d",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_fcc2f9cf7ee8461abee51391d585a666_13113074",
+      "remote_document_name": "中华人民共和国价格法__1997-12-29__2c909fdd678bf17901678bf5e05801ef",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_e5e6ca155e2a41e091ac3df608b0e751_13113074",
+      "remote_document_name": "中华人民共和国合同法__1999-03-15__2c909fdd678bf17901678bf6053a0217",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_f297e8fb3e3a4086bf587a2807a558a6_13113074",
+      "remote_document_name": "中华人民共和国种子法__2021-12-24__ff8081817f072a2e017f0b66fb640166",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_e203f028c4fd47d08325e8296f79a250_13113074",
+      "remote_document_name": "中华人民共和国担保法__1995-06-30__2c909fdd678bf17901678bf5d86801b3",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_df78dd5a96474adab490b217b61e778f_13113074",
+      "remote_document_name": "中华人民共和国土壤污染防治法__2018-08-31__2c909fdd678bf17901678bf8bb110b8b",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_ccfe42ed6d3742ec8c3ff680bc0095ea_13113074",
+      "remote_document_name": "中华人民共和国数据安全法__2021-06-10__ff80818179f5e0800179f885c7e70392",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_e15c09750cde4fb6b55bc8b817d2c938_13113074",
+      "remote_document_name": "中华人民共和国环境噪声污染防治法__2018-12-29__ff8080816f135f46016f20eb4a411719",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_edb9823197f7430588a2d4fb0f62cdd6_13113074",
+      "remote_document_name": "中华人民共和国促进科技成果转化法__2015-08-29__2c909fdd678bf17901678bf7e3540843",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_e654a56c7b484286aef90186a7098120_13113074",
+      "remote_document_name": "中华人民共和国对外关系法__2023-06-28__ff80818188d7430b0189019c15ee0943",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_dda1b8450bf946dca7cae45634f8609e_13113074",
+      "remote_document_name": "中华人民共和国固体废物污染环境防治法__2016-11-07__2c909fdd678bf17901678bf830900983",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_f40b1470878142809da61ddf8739a841_13113074",
+      "remote_document_name": "中华人民共和国固体废物污染环境防治法__2020-04-29__ff808081729c65d801729d455fad04be",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_ecaf61d960ca457fa81cb1bd01717a1e_13113074",
+      "remote_document_name": "中华人民共和国旅游法__2016-11-07__2c909fdd678bf17901678bf836f909a1",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d0e6d97289974fb78393d4d618722767_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于《中华人民共和国刑法》有关文物的规定适用于具有科学价值的古脊椎动物化石、古人类化石的解释__2005-12-29__2c909fdd678bf17901678bf8cd440bef",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d4c104335394491380b3ed440f0b22fe_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于取缔邪教组织、防范和惩治邪教活动的决定__unknown-date__ff808081774c7a3d0177702e6c9b195f",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_fedd186b725644e8be91903d0f85ab6d_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于废止有关收容教育法律规定和制度的决定__2019-12-28__ff80808176f4df37017719dc6f113b58",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d45000496a8a4562a3ab74d014878651_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于增加《中华人民共和国澳门特别行政区基本法》附件三所列全国性法律的决定（2005）__unknown-date__2c909fdd678bf17901678bf5cdb2016d",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_f0fbd99c565c44b9800e23b610495bf9_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于延长授权国务院在北京市大兴区等三十三个试点县（市、区）行政区域暂时调整实施有关法律规定期限的决定（失效）__2017-11-04__ff808081774c7a3d01777168a16b1e32",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_c5093d121cce48ad8ff0d472f139c41b_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于全国人民代表大会宪法和法律委员会职责问题的决定__unknown-date__ff80808176f4df3701771957a4073655",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_dee93455d95c4706b7cb6586eaa26e68_13113074",
+      "remote_document_name": "中华人民共和国刑法修正案（十）__2017-11-04__2c909fdd678bf17901678bf691ac04b5",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_e727435bc02e41a09a06e3e13d9df3b8_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于设立南京大屠杀死难者国家公祭日的决定__unknown-date__ff808081774c72b30177703a5a531ad3",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_e5e389c96dcb476e8c26e996c6c53d0d_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于延长授权国务院在粤港澳大湾区内地九市开展香港法律执业者和澳门执业律师取得内地执业资质和从事律师职业试点工作期限的决定__2023-09-01__ff8081818a21e8b2018a505222530c7a",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_e514252f19d34184b0db633d14c8a345_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于废止《中华人民共和国农业税条例》的决定__2005-12-29__ff808081777d07c50177844b6e510821",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_e0c6c15566434b208a7494cf32767dab_13113074",
+      "remote_document_name": "中华人民共和国国籍法__1980-09-10__2c909fdd678bf17901678bf5aba10073",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_eb199245519941b5b4bd0647681b8e0f_13113074",
+      "remote_document_name": "第十三届全国人民代表大会代表名额分配方案（失效）__2017-04-27__ff808081774c72b301777115333f1dcf",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_ec46f9d48ab64ab2ad90b6b0bb4f4fc7_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于设立海南自由贸易港知识产权法院的决定__unknown-date__ff80808176f4df37017719d619ce3b52",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_ddf9db5e57254f94a9a35ad93ea20c51_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于《中华人民共和国刑法》第一百五十八条、第一百五十九条的解释__2014-04-24__2c909fdd678bf17901678bf8d3620c3f",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d4e6b5acae334dbc9b020f9ce6f8e2f6_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于地区和市合并后市人民代表大会提前换届问题的决定（失效）__1983-05-09__ff808081774c72b3017771509a241f13",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_e060a9f0ba8c493490392554b9507af1_13113074",
+      "remote_document_name": "中华人民共和国消防法__2021-04-29__ff8081817ab22e0c017abd909312060a",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_e2b2615abc8d49eaa32067e16938d748_13113074",
+      "remote_document_name": "中华人民共和国招标投标法__2017-12-27__2c909fdd678bf17901678bf88f170b31",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_fa15fd9548964ccbb204da4c125f3d07_13113074",
+      "remote_document_name": "第十四届全国人民代表大会代表名额分配方案__2022-04-20__ff8081818044f77501804a21444f09d0",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_f3a908f1ce8545618b4571e8804669f0_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于严惩拐卖、绑架妇女、儿童的犯罪分子的决定（失效）__2009-08-27__ff808081774c72b301777114db011dcc",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_cf7db2c2a3c74c4b870f5dbfb0ed98bf_13113074",
+      "remote_document_name": "中华人民共和国兵役法__2011-10-29__2c909fdd678bf17901678bf7361b061d",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_eba9f9bf59384e86953d0b55cb4d43b0_13113074",
+      "remote_document_name": "中华人民共和国刑法修正案（八）__2011-02-25__2c909fdd678bf17901678bf68be604a1",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_eb6873f7bf72461f8260b03ba25cdd11_13113074",
+      "remote_document_name": "中华人民共和国港口法__2017-11-04__2c909fdd678bf17901678bf88b600af5",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_f85eb9ac02324e7f914b69cf3e405865_13113074",
+      "remote_document_name": "中华人民共和国城乡规划法__2015-04-24__2c909fdd678bf17901678bf7a26a07a3",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_cf0f8b8a0f1b4fdf903414fc9ba86a91_13113074",
+      "remote_document_name": "中华人民共和国法官法__2019-04-23__ff8080816f135f46016f21669bcd1abd",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_c98ac8128ec74843a71ddae17d0b13a8_13113074",
+      "remote_document_name": "中华人民共和国职业病防治法__2018-12-29__ff8080816f135f46016f212ea20a17f8",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_fd2b7804b153400fa39417fcda5d0a3e_13113074",
+      "remote_document_name": "中华人民共和国注册会计师法__2014-08-31__2c909fdd678bf17901678bf77d590749",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_eb990b4bf4e54327bcbe55388f7bd452_13113074",
+      "remote_document_name": "中华人民共和国统计法__2024-09-13__ff808181927b2d1a019289f0860a0405",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_c88c079d4a894abab6b05f42b935171c_13113074",
+      "remote_document_name": "中华人民共和国国防交通法__2016-09-03__2c909fdd678bf17901678bf81f340915",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d03b40a0bf26430180f5aaf53d52ee1b_13113074",
+      "remote_document_name": "中华人民共和国出口管制法__2020-10-17__ff80808175265dd401753fb348ce1266",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_f21bdc10b6294ebb878f262c2335ecd7_13113074",
+      "remote_document_name": "中华人民共和国国歌法__2017-09-01__2c909fdd678bf17901678bf85f470a2d",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_cc32ac11437046fe8e01088d05516ce0_13113074",
+      "remote_document_name": "中华人民共和国电力法__2015-04-24__2c909fdd678bf17901678bf7a37b07ad",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_ebf88a6b2cbc4ca6910b997635843602_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于修改《中华人民共和国慈善法》的决定__2023-12-29__ff8081818c3ce0ed018cb707d1112f71",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d96f524885fe4bab8ad93546dc52705e_13113074",
+      "remote_document_name": "中华人民共和国非物质文化遗产法__2011-02-25__2c909fdd678bf17901678bf7172805e1",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_dec7c4c585104ecda15c88e046622cef_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于批准法制工作委员会关于对1978年底以前颁布的法律进行清理的情况和意见的报告的决定__unknown-date__ff808081777d0c940177804bca9e048f",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_cf368f8b996c4d1ebfa565dfebf39b59_13113074",
+      "remote_document_name": "中华人民共和国烟叶税法__2017-12-27__2c909fdd678bf17901678bf88e4e0b1d",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_eaa720e8031848819e914b5119b60bb0_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于授权最高人民法院在部分地区开展民事诉讼程序繁简分流改革试点工作的决定（失效）__2019-12-28__ff80808176f4df37017719431eb735c7",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_f694a784b122466eb9390540d5551a30_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于香港特别行政区立法会议员资格问题的决定__unknown-date__ff8080817703add2017719d532772523",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_da83d3098391412d8ed6453fdc27d911_13113074",
+      "remote_document_name": "中华人民共和国契税法__2020-08-11__ff808081736ba7420173e71ef7563753",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_cec7e4f1fd1d4c81b0b243032533af7d_13113074",
+      "remote_document_name": "全国人民代表大会关于授权国务院在经济体制改革和对外开放方面可以制定暂行的规定或者条例的决定（失效）__1985-04-10__ff808081774c7a3d01777172228b1e5a",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_fd17ccb6584848ae8d3667dff931d6fc_13113074",
+      "remote_document_name": "中华人民共和国反家庭暴力法__2015-12-27__2c909fdd678bf17901678bf7f9d60889",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_e39849fddc52466caf0556c3aac8292f_13113074",
+      "remote_document_name": "中华人民共和国国家公园法__2025-09-12__f3f7217464834db5b5d4f563f40c6dec",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_ca66bed09de844a78004bb73fff89ecb_13113074",
+      "remote_document_name": "中华人民共和国监察法__2024-12-25__ff808181944069720194960dcea345a2",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_e9de123b6d32440481da7bb58fbbcb87_13113074",
+      "remote_document_name": "中华人民共和国人民武装警察法__2020-06-20__ff80808172b5f6e30172e4f3b6df198d",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d622d40036424d08b357588dac17ac6b_13113074",
+      "remote_document_name": "中华人民共和国工会法__2009-08-27__2c909fdd678bf17901678bf6f8a3050f",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_ef14239725d841d89ddf2414c2af691d_13113074",
+      "remote_document_name": "中华人民共和国种子法__2015-11-04__2c909fdd678bf17901678bf7f2330875",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_ce7d4a49c3b4470b8c6b4b03985d731b_13113074",
+      "remote_document_name": "中华人民共和国人民武装警察法__2009-08-27__2c909fdd678bf17901678bf673c1040b",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_ce2e5528d4474616bccf7441bdb8f67c_13113074",
+      "remote_document_name": "中华人民共和国澳门特别行政区基本法__1993-03-31__2c909fdd678bf17901678bf5d0280195",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_fcc0842d55ab4d849a0c5c9a58f7270a_13113074",
+      "remote_document_name": "中华人民共和国妇女权益保障法__2018-10-26__ff8080816f135f46016f1d16e370133e",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_cfaa86e09cde495da021ad4799e8bcc2_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于修改《中华人民共和国全国人民代表大会常务委员会议事规则》的决定__2022-06-24__ff808181818ea404018194a42f770194",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_f163457d7c66451f9062bf7585019708_13113074",
+      "remote_document_name": "中华人民共和国商标法__2013-08-30__2c909fdd678bf17901678bf75eed06e5",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_df461e37939a48689d268febc2b80a3a_13113074",
+      "remote_document_name": "中华人民共和国台湾同胞投资保护法__2016-09-03__2c909fdd678bf17901678bf826940933",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_e57962b8555741fd8eb6f0045282abd8_13113074",
+      "remote_document_name": "中华人民共和国反洗钱法__2006-10-31__2c909fdd678bf17901678bf643400357",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d7f657a082c645f2b0157cef28b82b92_13113074",
+      "remote_document_name": "中华人民共和国慈善法__2016-03-16__2c909fdd678bf17901678bf8028608c5",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d97d519d087d43e398a36d26cd2602e6_13113074",
+      "remote_document_name": "中华人民共和国文物保护法__2017-11-04__2c909fdd678bf17901678bf87e560ab9",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d92055044308436cbb5e9f666285ec1c_13113074",
+      "remote_document_name": "中华人民共和国证券投资基金法__2015-04-24__2c909fdd678bf17901678bf795800799",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_e051f2c5a54b4365950b19526f243f2d_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于实施渐进式延迟法定退休年龄的决定__2024-09-13__ff80818191db10440191eb2614320909",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d2e9f04843ec4d859772fdd693be2cda_13113074",
+      "remote_document_name": "中华人民共和国农村土地承包法__2009-08-27__2c909fdd678bf17901678bf6827f0447",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_f734c4c683a14a0092c022142149192b_13113074",
+      "remote_document_name": "中华人民共和国中小企业促进法__2017-09-01__2c909fdd678bf17901678bf85eba0a23",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_ed9c160e7426435d9476115c3719f36a_13113074",
+      "remote_document_name": "中华人民共和国矿产资源法__2024-11-08__ff808181927b2d1a01930c4a79406d06",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_f95b204882af4f32a8d52d278c751d62_13113074",
+      "remote_document_name": "中华人民共和国国防法__2009-08-27__2c909fdd678bf17901678bf67bc90433",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_f5f789f4840248b6aef6820e0096943d_13113074",
+      "remote_document_name": "中华人民共和国教育法__2015-12-27__2c909fdd678bf17901678bf7fc85089d",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_e9a3edaf09fb4203a8584b5adf9e2948_13113074",
+      "remote_document_name": "中华人民共和国出境入境管理法__2012-06-30__2c909fdd678bf17901678bf73ebd064f",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_ea3effd0da0b4f7f8ed56b0f5cc114a6_13113074",
+      "remote_document_name": "中华人民共和国大气污染防治法__2018-10-26__ff8080816f135f46016f1cd378361155",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_e424de93cec342da9b516be0bbf9c54b_13113074",
+      "remote_document_name": "中华人民共和国国境卫生检疫法__2024-06-28__ff8081818d6a463901905f1d7ca72d2d",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_e564f6679b3047baa5313503081bc231_13113074",
+      "remote_document_name": "中华人民共和国安全生产法__2021-06-10__ff8081817a66b816017a7956b7db0ad4",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_cf4da6f6e72c4cb9be2ac146039dc6bc_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于在中华人民共和国主席和副主席休假或者外出期间由全国人民代表大会常务委员会委员长接受外国使节的决定__unknown-date__ff808081777d07c501778480128d0905",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_f9c954a3db8d4ca9b356fe971ffc36c3_13113074",
+      "remote_document_name": "中华人民共和国残疾人保障法__2008-04-24__2c909fdd678bf17901678bf6508b03b1",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_cb11ebea0367464e8364399257eb163d_13113074",
+      "remote_document_name": "中华人民共和国城市房地产管理法__2019-08-26__ff8080816f3cbb3c016f462c6cc8280c",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_f235a2f56a7447efac8be280cd018916_13113074",
+      "remote_document_name": "中华人民共和国刑事诉讼法__2012-03-14__2c909fdd678bf17901678bf73b09063b",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_eb5691c7cc0141a182ca83318a4e0f29_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于加强网络信息保护的决定__2012-12-28__ff808081774c7a3d017770103f5518e8",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_df8d01ec646641669d7236f96930317b_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于《中华人民共和国香港特别行政区维护国家安全法》第十四条和第四十七条的解释__2022-12-30__ff808181855675b3018562fae41706b0",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_dc605e8adade4b13be341ab14c9fb10d_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于对中华人民共和国缔结或者参加的国际条约所规定的罪行行使刑事管辖权的决定__1987-06-23__2c909fdd678bf17901678bf5b4b200cd",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d69671019a644d8884b8081807eef853_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于加强国有资产管理情况监督的决定__unknown-date__ff8080817703add2017719d20c102517",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_cb2e407fd4414eeb9e637e33bc57c07b_13113074",
+      "remote_document_name": "第五届全国人民代表大会常务委员会关于批准《国务院关于职工探亲待遇的规定》的决议__1981-03-06__2c909fdd678bf17901678bf5acd40087",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_f91e6b14f6d84559aa5da1b2cf857384_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于废止部分法律的决定__2009-06-27__ff808081777d0c940177844fd08c0882",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_f2ce6792a4a9487ab6e2f8f1a411dbea_13113074",
+      "remote_document_name": "中华人民共和国城市居民委员会组织法__2018-12-29__ff8080816f135f46016f1d7c35181522",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_cbe7332b5743457180219135d2199e71_13113074",
+      "remote_document_name": "中华人民共和国中外合作经营企业法__2017-11-04__2c909fdd678bf17901678bf884f40acd",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_cbb2205dec35446c8c54948053535d8a_13113074",
+      "remote_document_name": "中华人民共和国国境卫生检疫法__2018-04-27__2c909fdd678bf17901678bf8a5c90b63",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d6709e7f03724c87a9242077a5f31092_13113074",
+      "remote_document_name": "中华人民共和国著作权法__2010-02-26__2c909fdd678bf17901678bf70bc70587",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_fca096e1953747a0990430d3dc98467a_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于国家安全机关行使公安机关的侦查、拘留、预审和执行逮捕的职权的决定__unknown-date__ff808081774c72b301777005911919af",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_e48f5349081c49e6986cf0bd8d419754_13113074",
+      "remote_document_name": "中华人民共和国中国人民银行法__2003-12-27__2c909fdd678bf17901678bf6200302cb",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_ff1f1ab3aaf540c68d5b47e205740156_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于开展第七个五年法治宣传教育的决议（失效）__2016-04-28__ff808081774c7a3d01776b8cad90138a",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d3803a7fd98e4ebbbecc2024d0554e54_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于延长人民陪审员制度改革试点期限的决定（失效）__2017-04-27__ff808081774c72b3017779f139a22327",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d2748d7e9fea4745b55137b8cee86a65_13113074",
+      "remote_document_name": "全国人民代表大会关于授权厦门市人民代表大会及其常务委员会和厦门市人民政府分别制定法规和规章在厦门经济特区实施的决定__unknown-date__ff808081774c7a3d01777099ba981a34",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_e52f30d750b34f94b118470967d24724_13113074",
+      "remote_document_name": "中华人民共和国第一届全国人民代表大会第五次会议关于汉语拼音方案的决议__1958-02-11__328b1241fb274209ae12f9fc35cf0613",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d51d49900364453fb8639b45c25e0883_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于批准中央军事委员会《关于授予军队离休干部中国人民解放军功勋荣誉章的规定》的决定__1988-07-01__2c909fdd678bf17901678bf5bfbf00d7",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_ff3d66e072e9444b92f2bdae3ba1f054_13113074",
+      "remote_document_name": "中华人民共和国澳门特别行政区选举第十三届全国人民代表大会代表的办法__2017-03-15__ff808081774c72b30177709e8cd51b89",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_c78bdda82e874376b176708b43c0a766_13113074",
+      "remote_document_name": "中华人民共和国农村土地承包经营纠纷调解仲裁法__2009-06-27__2c909fdd678bf17901678bf6726303f7",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_c941e4538c014a4b99737c5a4ebdb8fd_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于修改《中华人民共和国审计法》的决定__2021-10-23__ff8081817cac2ab8017cac9f8dca0d73",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_e57d47d85fd3454c9cdfa1e8c765f6a3_13113074",
+      "remote_document_name": "中华人民共和国反外国制裁法__2021-06-10__ff80818179f5dd9f0179f89e7a1d05d3",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_cdb5b751272e49768e2fd2639019c8af_13113074",
+      "remote_document_name": "中华人民共和国环境保护税法__2016-12-25__2c909fdd678bf17901678bf8429b09bf",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_ec729f08f9574def9c3bc7fc386baf42_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于修改《中华人民共和国网络安全法》的决定__2025-10-28__621d029681d4457ab5fc56ec7c7464a1",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_c79c59061c884af2a2bc910587b585c4_13113074",
+      "remote_document_name": "中华人民共和国行政处罚法__2021-01-22__ff8080817703add20177373df6a43e33",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_dca4308408184fed88f17abe66aa86ee_13113074",
+      "remote_document_name": "中华人民共和国国徽法__2020-10-17__ff808081752b7d430175e4c797ed15ff",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_fb7ce0823d0d45b48b942086b0ca6182_13113074",
+      "remote_document_name": "中华人民共和国农产品质量安全法__2022-09-02__ff80818182cf5d600182fd5d77dd23cf",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_c66478fb55874949a694561edbb04d89_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于维护互联网安全的决定__unknown-date__ff808081774c7a3d017770e8e8f61b17",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_e488b34b71c44920b4a25758bed9f082_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于增加《中华人民共和国香港特别行政区基本法》附件三所列全国性法律的决定（2017）__unknown-date__2c909fdd678bf17901678bf5c5e80127",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d69df4aeff9643799bf1bd121c5ed052_13113074",
+      "remote_document_name": "第八届全国人民代表大会第五次会议关于批准设立重庆直辖市的决定__unknown-date__ff808081774c7a3d01776af002a612f0",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_ca4bec429fb64a4d9964e9e897f2de9a_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于批准长江南通港、张家港对外国籍船舶开放的决定__unknown-date__ff808081774c72b30177702860571a5c",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_e03ca3d48e614fbc970047c03683a874_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于授权最高人民检察院在部分地区开展公益诉讼试点工作的决定（失效）__2015-07-01__ff808081774c72b3017770b9c8551bd3",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_da0bf09d947d46728ffcc4a7d8a23502_13113074",
+      "remote_document_name": "中华人民共和国人民警察警衔条例__2009-08-27__2c909fdd678bf17901678bf7002b054b",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d01efb911a43418a8c52b7e191ce01c7_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于批准《内地与香港特别行政区关于在广深港高铁西九龙站设立口岸实施“一地两检”的合作安排》的决定__unknown-date__ff808081777d07c501778047471a0409",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_ddb6aea4e68c426d92a360e060a4721f_13113074",
+      "remote_document_name": "第十三届全国人民代表大会少数民族代表名额分配方案（失效）__2017-04-27__ff808081774c72b301777117c3301df1",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_ec600523857a4db69426f3832c0981dc_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于《中华人民共和国香港特别行政区基本法》第五十三条第二款的解释__2005-04-27__2c909fdd678bf17901678bf8ccec0be5",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_c89bb9df1a3c4021b5f09031e06979ac_13113074",
+      "remote_document_name": "中华人民共和国旅游法__2018-10-26__ff8080816f135f46016f1d08f6da12f6",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_c195e6a3ccc24a5fa5077b65007d470f_13113074",
+      "remote_document_name": "中华人民共和国拍卖法__2015-04-24__2c909fdd678bf17901678bf7a44407b7",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_db636f28483b486c8c044fe016cb4529_13113074",
+      "remote_document_name": "中华人民共和国国防教育法__2018-04-27__2c909fdd678bf17901678bf6125b0285",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_c4c6e790cf2648c4a619a9e93e50dcae_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于我国加入世界贸易组织的决定__2001-11-09__ff808081774c7a3d017770efff5b1b49",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_ea3f03f8194641abbbca3269d59bdd7e_13113074",
+      "remote_document_name": "中华人民共和国全国人民代表大会常务委员会议事规则__2022-06-24__ff8081818291977701829f3b24f300d7",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_ed025168c3f645dcb0ec05177ece16e1_13113074",
+      "remote_document_name": "中华人民共和国学位法__2024-04-26__ff8081818d6a424b018f1a63b49a796a",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_eb365e5425a242ba8cda255b628bbdb3_13113074",
+      "remote_document_name": "中华人民共和国农民专业合作社法__2017-12-27__2c909fdd678bf17901678bf88dbe0b13",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_dbe10892c76743fbaab236d4161099d3_13113074",
+      "remote_document_name": "中华人民共和国审计法__2021-10-23__ff8081817d99a43a017dbd2663521c3f",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_e16134a5938c40469394711dd4e48761_13113074",
+      "remote_document_name": "中华人民共和国能源法__2024-11-08__ff808181927b2d1a01930b1c6f646c26",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d493f0aac0bc4f36b0fdc9bff6f3c8b7_13113074",
+      "remote_document_name": "中华人民共和国个人独资企业法__1999-08-30__2c909fdd678bf17901678bf609680235",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d704fb2e9fd64644bec8576947e86562_13113074",
+      "remote_document_name": "中华人民共和国农业技术推广法__2024-04-26__ff8081818f197cf001905e50cfa1359f",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_e5a99b325e0f41ddae6a058f88af4fb2_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于修改《中华人民共和国农业技术推广法》、《中华人民共和国未成年人保护法》、《中华人民共和国生物安全法》的决定__2024-04-26__ff8081818d6a4639018f1a7759c47964",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_ef06323a17fa4eedb8939a958b77e372_13113074",
+      "remote_document_name": "中华人民共和国黑土地保护法__2022-06-24__ff808181818e90e70181947372d60184",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_f74e73efe6394adf8ed087354c87fc1e_13113074",
+      "remote_document_name": "中华人民共和国军人保险法__2012-04-27__2c909fdd678bf17901678bf73e160645",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d576689585ac45bd99aaf07e070413a5_13113074",
+      "remote_document_name": "中华人民共和国执业医师法__2009-08-27__2c909fdd678bf17901678bf6fe11052d",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_ff6f40c7778044cd8851b70e032afdde_13113074",
+      "remote_document_name": "中华人民共和国电子商务法__2018-08-31__2c909fdd678bf17901678bf8af050b81",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_dd7c77176a4441b1ad3f2fd4732bd5eb_13113074",
+      "remote_document_name": "中华人民共和国对外贸易法__2025-12-27__f99c412df98b4ea396d6709c78703111",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d5fd0b5069ef4615905ded64ca54b12b_13113074",
+      "remote_document_name": "中华人民共和国香港特别行政区基本法__1990-04-04__2c909fdd678bf17901678bf5c6680131",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_ecdc94a2da8d45dd8a11a9fd0a37026c_13113074",
+      "remote_document_name": "中华人民共和国劳动合同法__2012-12-28__2c909fdd678bf17901678bf74d7106b3",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_ec3be60a42fc48e1a5e5db13920207f6_13113074",
+      "remote_document_name": "中华人民共和国公司法__2018-10-26__ff8080816f135f46016f1cc98ad81134",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_f0f2f4e5b6324f37ad9fd867fdeed7b2_13113074",
+      "remote_document_name": "中华人民共和国信托法__2001-04-28__2c909fdd678bf17901678bf60e1d0271",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d59b02173ec74c91a8780e1e9a0118cf_13113074",
+      "remote_document_name": "中华人民共和国统计法__2009-06-27__2c909fdd678bf17901678bf673070401",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d424c132a21c4c8280e1d0aaf511e12b_13113074",
+      "remote_document_name": "中华人民共和国刑法修正案（九）__2015-08-29__2c909fdd678bf17901678bf690bb04ab",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_c9ab2c84e2fa45aa96432bbf01d858f4_13113074",
+      "remote_document_name": "中华人民共和国婚姻法__2001-04-28__2c909fdd678bf17901678bf60f08027b",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_dfc1e17a22c1439387d056382bf5c7dc_13113074",
+      "remote_document_name": "中华人民共和国预防未成年人犯罪法__2012-10-26__2c909fdd678bf17901678bf746e4068b",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_e9d502d97061404498567b8d3dbd8251_13113074",
+      "remote_document_name": "中华人民共和国资源税法__2019-08-26__ff8080816f3cbb3c016f4635be1b2873",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_eba8e3a7937d4d15b7c1ced917678ad9_13113074",
+      "remote_document_name": "中华人民共和国海洋环境保护法__2017-11-04__2c909fdd678bf17901678bf8781d0aaf",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_d95a3200a9d544b2a21e570c8aa824f5_13113074",
+      "remote_document_name": "中华人民共和国电力法__2018-12-29__ff8080816f135f46016f1d9b1ffe15aa",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_cb00ecbd7bb743e8a475c911dc47ea8c_13113074",
+      "remote_document_name": "全国人民代表大会常务委员会关于修改《中华人民共和国村民委员会组织法》的决定__2025-10-28__ddb322b2f8d941d093b395e40d95f457",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_c034c35306f64dcdae19ed607dca3619_13113074",
+      "remote_document_name": "中华人民共和国立法法__2015-03-15__2c909fdd678bf17901678bf783fc0767",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_f1e8319e5e164a3d98d48b34497d8401_13113074",
+      "remote_document_name": "中华人民共和国预算法__2014-08-31__2c909fdd678bf17901678bf76d6d072b",
+      "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+      "remote_status": "FINISH"
+    }
+  ],
+  "unmatched_local_records_sample": [],
+  "note": "只读审计；未调用 DeleteIndexDocument；未修改 kb_upload_records"
+}

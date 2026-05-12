@@ -1,0 +1,345 @@
+{
+  "workspace_id": "llm-nshmuw81l63lm30x",
+  "index_id": "pp4vdh5x5a",
+  "total_remote_documents": 724,
+  "total_local_records": 6,
+  "total_remote_total_count_reported": 724,
+  "list_fetch_meta": {
+    "pages_fetched": 15,
+    "last_page_empty": false,
+    "total_fetched": 724
+  },
+  "generated_at_utc": "2026-05-11T01:12:12.855552+00:00",
+  "keep_latest": 1,
+  "scope": "managed-only",
+  "dry_run": true,
+  "managed_law_count": 6,
+  "delete_candidate_count": 0,
+  "blocked_candidate_count": 0,
+  "keep_count": 6,
+  "law_groups": [
+    {
+      "law_id": "bbbs:2c909fdd678bf17901678bf594240005",
+      "bbbs": "2c909fdd678bf17901678bf594240005",
+      "local_records": [
+        {
+          "id": "fe00e790b6a0dfcb243b9b3a317679e23b6fc860338a6e0cdbc1889c5a6a01c9",
+          "law_id": "bbbs:2c909fdd678bf17901678bf594240005",
+          "law_name": "中华人民共和国宪法修正案（1988年）",
+          "version_hash": "c2a4f6e367d9a4ff7d5e682b5cea71c0add989426c1e4342048ecac49912071b",
+          "export_file_path": "e:\\LegalData\\法规爬虫\\宪法\\清洗产物\\aliyun_upload\\宪法\\中华人民共和国宪法修正案（1988年）__1988-04-12__2c909fdd678bf17901678bf594240005.md",
+          "export_file_name": "中华人民共和国宪法修正案（1988年）__1988-04-12__2c909fdd678bf17901678bf594240005.md",
+          "bailian_file_id": "file_a116508f620943da9c2a8a07994ab3c8_13113074",
+          "bailian_job_id": "32c7970a388a46f6b9fa2e357a5979b1",
+          "upload_status": "FINISH",
+          "index_status": "FINISH",
+          "uploaded_at": "2026-05-09 17:47:00",
+          "last_error": null,
+          "created_at": "2026-05-09 17:47:00",
+          "updated_at": "2026-05-09 17:47:30"
+        }
+      ],
+      "remote_documents_for_law": [
+        {
+          "_raw": {
+            "Code": "FINISH",
+            "DocumentType": "md",
+            "GmtModified": 1778320041000,
+            "Id": "file_a116508f620943da9c2a8a07994ab3c8_13113074",
+            "Message": "索引构建成功",
+            "Name": "中华人民共和国宪法修正案（1988年）__1988-04-12__2c909fdd678bf17901678bf594240005",
+            "Size": 1521,
+            "SourceId": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+            "Status": "FINISH"
+          },
+          "remote_document_id": "file_a116508f620943da9c2a8a07994ab3c8_13113074",
+          "remote_document_name": "中华人民共和国宪法修正案（1988年）__1988-04-12__2c909fdd678bf17901678bf594240005",
+          "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+          "remote_doc_id_field": "",
+          "remote_status": "FINISH"
+        }
+      ],
+      "keep_documents": [
+        {
+          "remote_document_id": "file_a116508f620943da9c2a8a07994ab3c8_13113074",
+          "remote_document_name": "中华人民共和国宪法修正案（1988年）__1988-04-12__2c909fdd678bf17901678bf594240005",
+          "remote_status": "FINISH",
+          "matched_bbbs": "2c909fdd678bf17901678bf594240005"
+        }
+      ],
+      "delete_candidates": [],
+      "blocked_candidates": [],
+      "reason": "managed law_id；远端收敛：bbbs 命中文档名 或 document Id/SourceId 落在本地该 law 的 bailian_file_id 集合；保留本地 FINISH 且 updated_at 最新的前 1 条对应的 bailian_file_id（远端 Id）"
+    },
+    {
+      "law_id": "bbbs:2c909fdd678bf17901678bf59c0d000f",
+      "bbbs": "2c909fdd678bf17901678bf59c0d000f",
+      "local_records": [
+        {
+          "id": "5a2eb569eb3448fe116e64697d1c9b2e71adee136a53c78ad0893b563ca1ab66",
+          "law_id": "bbbs:2c909fdd678bf17901678bf59c0d000f",
+          "law_name": "中华人民共和国宪法修正案（1993年）",
+          "version_hash": "9ebe8a4ac9c21f0e8f69e228a79811de9b8c22d9a448f7527e6f6aaef31d2492",
+          "export_file_path": "e:\\LegalData\\法规爬虫\\宪法\\清洗产物\\aliyun_upload\\宪法\\中华人民共和国宪法修正案（1993年）__1993-03-29__2c909fdd678bf17901678bf59c0d000f.md",
+          "export_file_name": "中华人民共和国宪法修正案（1993年）__1993-03-29__2c909fdd678bf17901678bf59c0d000f.md",
+          "bailian_file_id": "file_11cc91572a664c55bcc4c36e9644c40f_13113074",
+          "bailian_job_id": "32c7970a388a46f6b9fa2e357a5979b1",
+          "upload_status": "FINISH",
+          "index_status": "FINISH",
+          "uploaded_at": "2026-05-09 17:47:00",
+          "last_error": null,
+          "created_at": "2026-05-09 17:47:00",
+          "updated_at": "2026-05-09 17:47:30"
+        }
+      ],
+      "remote_documents_for_law": [
+        {
+          "_raw": {
+            "Code": "FINISH",
+            "DocumentType": "md",
+            "GmtModified": 1778320042000,
+            "Id": "file_11cc91572a664c55bcc4c36e9644c40f_13113074",
+            "Message": "索引构建成功",
+            "Name": "中华人民共和国宪法修正案（1993年）__1993-03-29__2c909fdd678bf17901678bf59c0d000f",
+            "Size": 7811,
+            "SourceId": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+            "Status": "FINISH"
+          },
+          "remote_document_id": "file_11cc91572a664c55bcc4c36e9644c40f_13113074",
+          "remote_document_name": "中华人民共和国宪法修正案（1993年）__1993-03-29__2c909fdd678bf17901678bf59c0d000f",
+          "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+          "remote_doc_id_field": "",
+          "remote_status": "FINISH"
+        }
+      ],
+      "keep_documents": [
+        {
+          "remote_document_id": "file_11cc91572a664c55bcc4c36e9644c40f_13113074",
+          "remote_document_name": "中华人民共和国宪法修正案（1993年）__1993-03-29__2c909fdd678bf17901678bf59c0d000f",
+          "remote_status": "FINISH",
+          "matched_bbbs": "2c909fdd678bf17901678bf59c0d000f"
+        }
+      ],
+      "delete_candidates": [],
+      "blocked_candidates": [],
+      "reason": "managed law_id；远端收敛：bbbs 命中文档名 或 document Id/SourceId 落在本地该 law 的 bailian_file_id 集合；保留本地 FINISH 且 updated_at 最新的前 1 条对应的 bailian_file_id（远端 Id）"
+    },
+    {
+      "law_id": "bbbs:2c909fdd678bf17901678bf59c9e0019",
+      "bbbs": "2c909fdd678bf17901678bf59c9e0019",
+      "local_records": [
+        {
+          "id": "f324f7dfe3b2fc21d0451a7ede9defaf712ce9e46ba94664c1719739c3ca267f",
+          "law_id": "bbbs:2c909fdd678bf17901678bf59c9e0019",
+          "law_name": "中华人民共和国宪法修正案（1999年）",
+          "version_hash": "334e63e14dd050a3f95e37355dc9de812caad4a72675e61aae074215f58f13b5",
+          "export_file_path": "e:\\LegalData\\法规爬虫\\宪法\\清洗产物\\aliyun_upload\\宪法\\中华人民共和国宪法修正案（1999年）__1999-03-15__2c909fdd678bf17901678bf59c9e0019.md",
+          "export_file_name": "中华人民共和国宪法修正案（1999年）__1999-03-15__2c909fdd678bf17901678bf59c9e0019.md",
+          "bailian_file_id": "file_a0b5fa3c42b2405bb406374938cc847a_13113074",
+          "bailian_job_id": "32c7970a388a46f6b9fa2e357a5979b1",
+          "upload_status": "FINISH",
+          "index_status": "FINISH",
+          "uploaded_at": "2026-05-09 17:47:01",
+          "last_error": null,
+          "created_at": "2026-05-09 17:47:01",
+          "updated_at": "2026-05-09 17:47:30"
+        }
+      ],
+      "remote_documents_for_law": [
+        {
+          "_raw": {
+            "Code": "FINISH",
+            "DocumentType": "md",
+            "GmtModified": 1778320042000,
+            "Id": "file_a0b5fa3c42b2405bb406374938cc847a_13113074",
+            "Message": "索引构建成功",
+            "Name": "中华人民共和国宪法修正案（1999年）__1999-03-15__2c909fdd678bf17901678bf59c9e0019",
+            "Size": 6791,
+            "SourceId": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+            "Status": "FINISH"
+          },
+          "remote_document_id": "file_a0b5fa3c42b2405bb406374938cc847a_13113074",
+          "remote_document_name": "中华人民共和国宪法修正案（1999年）__1999-03-15__2c909fdd678bf17901678bf59c9e0019",
+          "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+          "remote_doc_id_field": "",
+          "remote_status": "FINISH"
+        }
+      ],
+      "keep_documents": [
+        {
+          "remote_document_id": "file_a0b5fa3c42b2405bb406374938cc847a_13113074",
+          "remote_document_name": "中华人民共和国宪法修正案（1999年）__1999-03-15__2c909fdd678bf17901678bf59c9e0019",
+          "remote_status": "FINISH",
+          "matched_bbbs": "2c909fdd678bf17901678bf59c9e0019"
+        }
+      ],
+      "delete_candidates": [],
+      "blocked_candidates": [],
+      "reason": "managed law_id；远端收敛：bbbs 命中文档名 或 document Id/SourceId 落在本地该 law 的 bailian_file_id 集合；保留本地 FINISH 且 updated_at 最新的前 1 条对应的 bailian_file_id（远端 Id）"
+    },
+    {
+      "law_id": "bbbs:2c909fdd678bf17901678bf59d420023",
+      "bbbs": "2c909fdd678bf17901678bf59d420023",
+      "local_records": [
+        {
+          "id": "efbdc060d81a4e20245d60110667c0983ad4000513923ca4fb1d5ebf4bc3faa2",
+          "law_id": "bbbs:2c909fdd678bf17901678bf59d420023",
+          "law_name": "中华人民共和国宪法修正案（2004年）",
+          "version_hash": "1c722d9d57beebb10fae81864678ce9770febb22c8b77d2ede1306a46e5a675c",
+          "export_file_path": "e:\\LegalData\\法规爬虫\\宪法\\清洗产物\\aliyun_upload\\宪法\\中华人民共和国宪法修正案（2004年）__2004-03-14__2c909fdd678bf17901678bf59d420023.md",
+          "export_file_name": "中华人民共和国宪法修正案（2004年）__2004-03-14__2c909fdd678bf17901678bf59d420023.md",
+          "bailian_file_id": "file_2a0be469f4144fd4a2ff11c8cbd26141_13113074",
+          "bailian_job_id": "32c7970a388a46f6b9fa2e357a5979b1",
+          "upload_status": "FINISH",
+          "index_status": "FINISH",
+          "uploaded_at": "2026-05-09 17:47:02",
+          "last_error": null,
+          "created_at": "2026-05-09 17:47:02",
+          "updated_at": "2026-05-09 17:47:30"
+        }
+      ],
+      "remote_documents_for_law": [
+        {
+          "_raw": {
+            "Code": "FINISH",
+            "DocumentType": "md",
+            "GmtModified": 1778320042000,
+            "Id": "file_2a0be469f4144fd4a2ff11c8cbd26141_13113074",
+            "Message": "索引构建成功",
+            "Name": "中华人民共和国宪法修正案（2004年）__2004-03-14__2c909fdd678bf17901678bf59d420023",
+            "Size": 10785,
+            "SourceId": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+            "Status": "FINISH"
+          },
+          "remote_document_id": "file_2a0be469f4144fd4a2ff11c8cbd26141_13113074",
+          "remote_document_name": "中华人民共和国宪法修正案（2004年）__2004-03-14__2c909fdd678bf17901678bf59d420023",
+          "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+          "remote_doc_id_field": "",
+          "remote_status": "FINISH"
+        }
+      ],
+      "keep_documents": [
+        {
+          "remote_document_id": "file_2a0be469f4144fd4a2ff11c8cbd26141_13113074",
+          "remote_document_name": "中华人民共和国宪法修正案（2004年）__2004-03-14__2c909fdd678bf17901678bf59d420023",
+          "remote_status": "FINISH",
+          "matched_bbbs": "2c909fdd678bf17901678bf59d420023"
+        }
+      ],
+      "delete_candidates": [],
+      "blocked_candidates": [],
+      "reason": "managed law_id；远端收敛：bbbs 命中文档名 或 document Id/SourceId 落在本地该 law 的 bailian_file_id 集合；保留本地 FINISH 且 updated_at 最新的前 1 条对应的 bailian_file_id（远端 Id）"
+    },
+    {
+      "law_id": "bbbs:2c909fdd678bf17901678bf59eb80037",
+      "bbbs": "2c909fdd678bf17901678bf59eb80037",
+      "local_records": [
+        {
+          "id": "9e3ddd89c7fc2ee623b5eb4bfbbbe2e72ff18e0212d75609bf66a0b326ee6596",
+          "law_id": "bbbs:2c909fdd678bf17901678bf59eb80037",
+          "law_name": "中华人民共和国宪法（1982年）",
+          "version_hash": "9fa1c46c8c9829f4c82859a367174cf12ccb2fe7dbc1d24e17d321f972ee983e",
+          "export_file_path": "e:\\LegalData\\法规爬虫\\宪法\\清洗产物\\aliyun_upload\\宪法\\中华人民共和国宪法（1982年）__1982-12-04__2c909fdd678bf17901678bf59eb80037.md",
+          "export_file_name": "中华人民共和国宪法（1982年）__1982-12-04__2c909fdd678bf17901678bf59eb80037.md",
+          "bailian_file_id": "file_02d14035e59d4f29afe39a112de2b6bd_13113074",
+          "bailian_job_id": "32c7970a388a46f6b9fa2e357a5979b1",
+          "upload_status": "FINISH",
+          "index_status": "FINISH",
+          "uploaded_at": "2026-05-09 17:47:03",
+          "last_error": null,
+          "created_at": "2026-05-09 17:47:03",
+          "updated_at": "2026-05-09 17:47:30"
+        }
+      ],
+      "remote_documents_for_law": [
+        {
+          "_raw": {
+            "Code": "FINISH",
+            "DocumentType": "md",
+            "GmtModified": 1778320043000,
+            "Id": "file_02d14035e59d4f29afe39a112de2b6bd_13113074",
+            "Message": "索引构建成功",
+            "Name": "中华人民共和国宪法（1982年）__1982-12-04__2c909fdd678bf17901678bf59eb80037",
+            "Size": 88554,
+            "SourceId": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+            "Status": "FINISH"
+          },
+          "remote_document_id": "file_02d14035e59d4f29afe39a112de2b6bd_13113074",
+          "remote_document_name": "中华人民共和国宪法（1982年）__1982-12-04__2c909fdd678bf17901678bf59eb80037",
+          "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+          "remote_doc_id_field": "",
+          "remote_status": "FINISH"
+        }
+      ],
+      "keep_documents": [
+        {
+          "remote_document_id": "file_02d14035e59d4f29afe39a112de2b6bd_13113074",
+          "remote_document_name": "中华人民共和国宪法（1982年）__1982-12-04__2c909fdd678bf17901678bf59eb80037",
+          "remote_status": "FINISH",
+          "matched_bbbs": "2c909fdd678bf17901678bf59eb80037"
+        }
+      ],
+      "delete_candidates": [],
+      "blocked_candidates": [],
+      "reason": "managed law_id；远端收敛：bbbs 命中文档名 或 document Id/SourceId 落在本地该 law 的 bailian_file_id 集合；保留本地 FINISH 且 updated_at 最新的前 1 条对应的 bailian_file_id（远端 Id）"
+    },
+    {
+      "law_id": "bbbs:2c909fdd678bf17901678bf5a483004b",
+      "bbbs": "2c909fdd678bf17901678bf5a483004b",
+      "local_records": [
+        {
+          "id": "87131cf9219956f78945adbfc0338bcd7c0b10f8f888b56213adf52d9ef4d012",
+          "law_id": "bbbs:2c909fdd678bf17901678bf5a483004b",
+          "law_name": "中华人民共和国宪法（2018年修正文本）",
+          "version_hash": "e53c3ce0f07fecd985fa6e40117feee91bad49ce0eb67bc004b049bae59ecd91",
+          "export_file_path": "e:\\LegalData\\法规爬虫\\宪法\\清洗产物\\aliyun_upload\\宪法\\中华人民共和国宪法（2018年修正文本）__2018-03-11__2c909fdd678bf17901678bf5a483004b.md",
+          "export_file_name": "中华人民共和国宪法（2018年修正文本）__2018-03-11__2c909fdd678bf17901678bf5a483004b.md",
+          "bailian_file_id": "file_0d1beb106fb24c3f93bdc5e73284f517_13113074",
+          "bailian_job_id": "32c7970a388a46f6b9fa2e357a5979b1",
+          "upload_status": "FINISH",
+          "index_status": "FINISH",
+          "uploaded_at": "2026-05-09 17:47:03",
+          "last_error": null,
+          "created_at": "2026-05-09 17:47:03",
+          "updated_at": "2026-05-09 17:47:30"
+        }
+      ],
+      "remote_documents_for_law": [
+        {
+          "_raw": {
+            "Code": "FINISH",
+            "DocumentType": "md",
+            "GmtModified": 1778320042000,
+            "Id": "file_0d1beb106fb24c3f93bdc5e73284f517_13113074",
+            "Message": "索引构建成功",
+            "Name": "中华人民共和国宪法（2018年修正文本）__2018-03-11__2c909fdd678bf17901678bf5a483004b",
+            "Size": 94863,
+            "SourceId": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+            "Status": "FINISH"
+          },
+          "remote_document_id": "file_0d1beb106fb24c3f93bdc5e73284f517_13113074",
+          "remote_document_name": "中华人民共和国宪法（2018年修正文本）__2018-03-11__2c909fdd678bf17901678bf5a483004b",
+          "remote_source_id": "cate_4c2bdcb054ac4fb4923548becc69b489_13113074",
+          "remote_doc_id_field": "",
+          "remote_status": "FINISH"
+        }
+      ],
+      "keep_documents": [
+        {
+          "remote_document_id": "file_0d1beb106fb24c3f93bdc5e73284f517_13113074",
+          "remote_document_name": "中华人民共和国宪法（2018年修正文本）__2018-03-11__2c909fdd678bf17901678bf5a483004b",
+          "remote_status": "FINISH",
+          "matched_bbbs": "2c909fdd678bf17901678bf5a483004b"
+        }
+      ],
+      "delete_candidates": [],
+      "blocked_candidates": [],
+      "reason": "managed law_id；远端收敛：bbbs 命中文档名 或 document Id/SourceId 落在本地该 law 的 bailian_file_id 集合；保留本地 FINISH 且 updated_at 最新的前 1 条对应的 bailian_file_id（远端 Id）"
+    }
+  ],
+  "notes": [
+    "本报告仅为 dry-run，未调用 DeleteIndexDocument，未修改 kb_upload_records，未修改远端",
+    "删除候选仅包含 managed law 范围内、远端 FINISH 且非保留的文档",
+    "生产使用前必须人工审查 JSON"
+  ]
+}

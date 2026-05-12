@@ -51,6 +51,28 @@ def compute_version_hash(master_row: Mapping[str, Any], export_file_path: str) -
     return sha256_file(export_file_path)
 
 
+def mark_records_deleted_by_bailian_file_ids(
+    bailian_file_ids: Sequence[str],
+    *,
+    db_path: str | Path | None = None,
+) -> int:
+    """
+    将 bailian_file_id 命中的本地行标记为索引侧已删除（不插入新行）。
+    返回 UPDATE 影响行数。
+    """
+    ids = [str(x).strip() for x in bailian_file_ids if str(x).strip()]
+    if not ids:
+        return 0
+    ts = _now()
+    init_kb_upload_db(db_path)
+    with connect(db_path) as conn:
+        q = f"UPDATE kb_upload_records SET deleted_at = ?, index_status = 'DELETED', updated_at = ?, last_error = NULL WHERE bailian_file_id IN ({','.join('?' * len(ids))})"
+        cur = conn.execute(q, [ts, ts, *ids])
+        n = cur.rowcount or 0
+        conn.commit()
+        return int(n)
+
+
 def fetch_kb_upload_records_as_dicts(
     *,
     db_path: str | Path | None = None,

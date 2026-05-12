@@ -58,10 +58,22 @@ app = FastAPI(title="Legal AI API", version="0.1.0", lifespan=_app_lifespan)
 
 # Frontend calls this API directly from the browser (Next.js on :3000),
 # so CORS must be enabled for local dev and configurable deployments.
-allowed_origins = [
+_DEFAULT_CORS_ORIGINS = (
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-]
+)
+
+
+def _parse_cors_allow_origins() -> list[str]:
+    raw = os.environ.get("CORS_ALLOW_ORIGINS", "").strip()
+    if not raw:
+        return list(_DEFAULT_CORS_ORIGINS)
+    parts = [p.strip() for p in raw.split(",")]
+    origins = [p for p in parts if p]
+    return origins if origins else list(_DEFAULT_CORS_ORIGINS)
+
+
+allowed_origins = _parse_cors_allow_origins()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,

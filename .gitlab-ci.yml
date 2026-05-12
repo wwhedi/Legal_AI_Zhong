@@ -1,0 +1,36 @@
+# Legal_AI — GitLab CI（检查与构建 only）
+# - 不部署生产、不 SSH、不 docker push、不注入生产密钥
+# - 不读取生产 .env；请勿在 CI 脚本中 echo 敏感变量
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+
+stages:
+  - test
+
+variables:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+backend_check:
+  stage: test
+  image: python:3.11-bookworm
+  script:
+    - python -m pip install --upgrade pip
+    - pip install -r requirements-server.txt
+    - python -m compileall api auth chat_store kb_upload_store law_spider scripts services config
+  artifacts:
+    when: never
+
+frontend_build:
+  stage: test
+  image: node:lts
+  script:
+    - cd frontend
+    - npm ci
+    # package.json 中 lint 为 bare eslint；显式传入路径以保证 CI 下扫描源码
+    - npm run lint -- .
+    - NEXT_PUBLIC_API_BASE_URL=/api npm run build
+  artifacts:
+    when: never

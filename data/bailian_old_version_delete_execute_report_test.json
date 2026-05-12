@@ -1,0 +1,140 @@
+{
+  "generated_at_utc": "2026-05-11T01:09:16.808586+00:00",
+  "index_id": "pp4vdh5x5a",
+  "execute": true,
+  "source_plan_path": "E:\\cousor\\Legal_AI\\data\\bailian_old_version_delete_plan_test.json",
+  "total_candidates": 18,
+  "deleted_count": 18,
+  "failed_count": 0,
+  "skipped_count": 0,
+  "deleted_documents": [
+    {
+      "remote_document_id": "file_23501efb01334a208a99575254a25151_13113074",
+      "remote_document_name": "中华人民共和国宪法修正案（1988年）__1988-04-12__2c909fdd678bf17901678bf594240005",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_16ed5dde2cb94bde9ba61c3fb15c4976_13113074",
+      "remote_document_name": "中华人民共和国宪法修正案（1988年）__1988-04-12__2c909fdd678bf17901678bf594240005",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_80cb2b389df04a0394ba0db523a683f4_13113074",
+      "remote_document_name": "中华人民共和国宪法修正案（1988年）__1988-04-12__2c909fdd678bf17901678bf594240005",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_601014a4beb74f7f920b0aac796ad073_13113074",
+      "remote_document_name": "中华人民共和国宪法修正案（1993年）__1993-03-29__2c909fdd678bf17901678bf59c0d000f",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_08383b7d83a64e8aba60723d9ede69dd_13113074",
+      "remote_document_name": "中华人民共和国宪法修正案（1993年）__1993-03-29__2c909fdd678bf17901678bf59c0d000f",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_bb8629c3e3464ef3a3d1e49219cf1c36_13113074",
+      "remote_document_name": "中华人民共和国宪法修正案（1993年）__1993-03-29__2c909fdd678bf17901678bf59c0d000f",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_1c7cc8b7895b44bf89e0f04fb65bf49d_13113074",
+      "remote_document_name": "中华人民共和国宪法修正案（1999年）__1999-03-15__2c909fdd678bf17901678bf59c9e0019",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_7978fe01749f46268c48807ba5f03274_13113074",
+      "remote_document_name": "中华人民共和国宪法修正案（1999年）__1999-03-15__2c909fdd678bf17901678bf59c9e0019",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_bc9464eb119c4c6497aa77a3ace79688_13113074",
+      "remote_document_name": "中华人民共和国宪法修正案（1999年）__1999-03-15__2c909fdd678bf17901678bf59c9e0019",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_acba7f921d534972b888b37f01d2a057_13113074",
+      "remote_document_name": "中华人民共和国宪法修正案（2004年）__2004-03-14__2c909fdd678bf17901678bf59d420023",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_bdefbe6b605c44618f305abb1063ea35_13113074",
+      "remote_document_name": "中华人民共和国宪法修正案（2004年）__2004-03-14__2c909fdd678bf17901678bf59d420023",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_4ef94b17fe714c5695d7ea8d63b98690_13113074",
+      "remote_document_name": "中华人民共和国宪法修正案（2004年）__2004-03-14__2c909fdd678bf17901678bf59d420023",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_c22a5bba8b5143b1aa8c1905dcba85c1_13113074",
+      "remote_document_name": "中华人民共和国宪法（1982年）__1982-12-04__2c909fdd678bf17901678bf59eb80037",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_ff2423c775a14cbca269db179b06ec77_13113074",
+      "remote_document_name": "中华人民共和国宪法（1982年）__1982-12-04__2c909fdd678bf17901678bf59eb80037",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_6667f91790884d11a78eb0fb8bb59dae_13113074",
+      "remote_document_name": "中华人民共和国宪法（1982年）__1982-12-04__2c909fdd678bf17901678bf59eb80037",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_6cc1e0301ba447c680b5b2d04f47b07c_13113074",
+      "remote_document_name": "中华人民共和国宪法（2018年修正文本）__2018-03-11__2c909fdd678bf17901678bf5a483004b",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_40f9d118d97e4c17a2f103d46d6b434e_13113074",
+      "remote_document_name": "中华人民共和国宪法（2018年修正文本）__2018-03-11__2c909fdd678bf17901678bf5a483004b",
+      "remote_status": "FINISH"
+    },
+    {
+      "remote_document_id": "file_ddbcb0763b8b4acb9694775ea2a87244_13113074",
+      "remote_document_name": "中华人民共和国宪法（2018年修正文本）__2018-03-11__2c909fdd678bf17901678bf5a483004b",
+      "remote_status": "FINISH"
+    }
+  ],
+  "failed_documents": [],
+  "skipped_documents": [],
+  "batch_results": [
+    {
+      "batch_index": 0,
+      "document_ids": [
+        "file_23501efb01334a208a99575254a25151_13113074",
+        "file_16ed5dde2cb94bde9ba61c3fb15c4976_13113074",
+        "file_80cb2b389df04a0394ba0db523a683f4_13113074",
+        "file_601014a4beb74f7f920b0aac796ad073_13113074",
+        "file_08383b7d83a64e8aba60723d9ede69dd_13113074",
+        "file_bb8629c3e3464ef3a3d1e49219cf1c36_13113074",
+        "file_1c7cc8b7895b44bf89e0f04fb65bf49d_13113074",
+        "file_7978fe01749f46268c48807ba5f03274_13113074",
+        "file_bc9464eb119c4c6497aa77a3ace79688_13113074",
+        "file_acba7f921d534972b888b37f01d2a057_13113074"
+      ],
+      "ok": true,
+      "error": null,
+      "response_code": "Success"
+    },
+    {
+      "batch_index": 1,
+      "document_ids": [
+        "file_bdefbe6b605c44618f305abb1063ea35_13113074",
+        "file_4ef94b17fe714c5695d7ea8d63b98690_13113074",
+        "file_c22a5bba8b5143b1aa8c1905dcba85c1_13113074",
+        "file_ff2423c775a14cbca269db179b06ec77_13113074",
+        "file_6667f91790884d11a78eb0fb8bb59dae_13113074",
+        "file_6cc1e0301ba447c680b5b2d04f47b07c_13113074",
+        "file_40f9d118d97e4c17a2f103d46d6b434e_13113074",
+        "file_ddbcb0763b8b4acb9694775ea2a87244_13113074"
+      ],
+      "ok": true,
+      "error": null,
+      "response_code": "Success"
+    }
+  ]
+}
